@@ -34,7 +34,7 @@ export const findItemByName = async (userId: string, itemName: string): Promise<
 };
 
 
-export const addOrUpdateItem = async (userId: string, itemName: string, quantity: number, price: number): Promise<void> => {
+export const addOrUpdateItem = async (userId: string, itemName: string, quantity: number, price: number, expiryDate?: string): Promise<void> => {
     const itemRef = collection(db, `users/${userId}/inventory`);
     const normalizedItemName = itemName.toLowerCase();
     
@@ -42,19 +42,30 @@ export const addOrUpdateItem = async (userId: string, itemName: string, quantity
         const q = query(itemRef, where("name", "==", normalizedItemName));
         const snapshot = await getDocs(q);
         
+        const newItemData: any = { 
+            name: normalizedItemName, 
+            quantity, 
+            price 
+        };
+        if (expiryDate) {
+            newItemData.expiryDate = expiryDate;
+        }
+
         if (snapshot.empty) {
-            // Add new item
-            transaction.set(doc(itemRef), { 
-                name: normalizedItemName, 
-                quantity, 
-                price 
-            });
+            transaction.set(doc(itemRef), newItemData);
         } else {
-            // Update existing item
             const existingDoc = snapshot.docs[0];
-            const newQuantity = existingDoc.data().quantity + quantity;
-            // Optionally average the price or use the new one. Here we'll use the new price.
-            transaction.update(existingDoc.ref, { quantity: newQuantity, price });
+            const existingData = existingDoc.data();
+            const newQuantity = existingData.quantity + quantity;
+            
+            const updatedData: any = { quantity: newQuantity, price };
+             if (expiryDate) {
+                updatedData.expiryDate = expiryDate;
+            } else if (existingData.expiryDate) {
+                updatedData.expiryDate = existingData.expiryDate; // Preserve existing expiry if new one isn't provided
+            }
+
+            transaction.update(existingDoc.ref, updatedData);
         }
     });
 };

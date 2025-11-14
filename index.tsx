@@ -1,3 +1,11 @@
+import { Buffer } from 'buffer';
+import Long from 'long';
+
+// Polyfill Buffer and Long for libraries that expect them in the global scope.
+// @ts-ignore
+window.Buffer = Buffer;
+// @ts-ignore
+window.Long = Long;
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
