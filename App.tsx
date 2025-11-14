@@ -11,6 +11,8 @@ import Onboarding from './components/Onboarding';
 import { getChatsStream } from './services/chatService';
 import Toast from './components/Toast';
 import { Chat } from './types';
+import { useExpiryScheduler } from './hooks/useExpiryScheduler';
+import NotificationCenter from './components/NotificationCenter';
 
 // Define navigation state types
 export interface ChatParams {
@@ -23,28 +25,29 @@ const AppContent: React.FC = () => {
     const [activeChatParams, setActiveChatParams] = useState<ChatParams | null>(null);
     const [toastMessage, setToastMessage] = useState('');
     const lastMessageTimestampRef = React.useRef<any>(null);
+    const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
+
+    // Run the expiry checker in the background when a user is logged in
+    useExpiryScheduler(user?.uid);
 
     useEffect(() => {
         if (!user || !userProfile?.role) return;
 
         const unsubscribe = getChatsStream(user.uid, (chats: Chat[]) => {
-            const latestChat = chats[0]; // Chats are sorted by timestamp
+            if (chats.length === 0) return;
+            const latestChat = chats.sort((a,b) => (b.lastMessageTimestamp?.toMillis() ?? 0) - (a.lastMessageTimestamp?.toMillis() ?? 0))[0];
+            
             if (latestChat && latestChat.lastMessageTimestamp && latestChat.lastMessageText) {
-                // A simple check to see if this is a "new" message since the last toast
                 const newTimestamp = latestChat.lastMessageTimestamp.seconds;
-                const lastTimestamp = lastMessageTimestampRef.current?.seconds;
+                const lastTimestamp = lastMessageTimestampRef.current?.seconds || 0;
 
-                // Check if the latest message is from another user
-                const participants = latestChat.participants || [];
-                const senderId = participants.find(p => p !== user.uid);
+                const senderId = latestChat.participants.find(p => p !== user.uid);
                 
-                // This logic is simplified: it assumes the last message on the most recent chat is the "newest" one.
-                if (newTimestamp > lastTimestamp && latestChat.unreadCount[user.uid] > 0) {
-                     // Find the sender's name
+                if (newTimestamp > lastTimestamp && (latestChat.unreadCount[user.uid] || 0) > 0) {
                     const senderName = latestChat.sellerId === senderId ? latestChat.sellerName : latestChat.supplierName;
                     setToastMessage(`New message from ${senderName}`);
+                    lastMessageTimestampRef.current = latestChat.lastMessageTimestamp;
                 }
-                lastMessageTimestampRef.current = latestChat.lastMessageTimestamp;
             }
         });
 
@@ -66,7 +69,6 @@ const AppContent: React.FC = () => {
         return <LoginComponent />;
     }
     
-    // If user is logged in but hasn't completed onboarding (role or name is missing)
     if (userProfile && (!userProfile.role || !userProfile.name)) {
         return <Onboarding />;
     }
@@ -79,12 +81,18 @@ const AppContent: React.FC = () => {
         if (userProfile?.role === 'seller') {
             return (
                 <InventoryProvider userId={user.uid}>
-                    <InventoryManager onNavigateToChat={navigateToChat} />
+                    <InventoryManager 
+                        onNavigateToChat={navigateToChat} 
+                        onOpenNotifications={() => setIsNotificationCenterOpen(true)} 
+                    />
                 </InventoryProvider>
             );
         }
         if (userProfile?.role === 'supplier') {
-            return <SupplierDashboard onNavigateToChat={navigateToChat} />;
+            return <SupplierDashboard 
+                        onNavigateToChat={navigateToChat}
+                        onOpenNotifications={() => setIsNotificationCenterOpen(true)}
+                    />;
         }
         return (
             <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
@@ -97,6 +105,9 @@ const AppContent: React.FC = () => {
         <>
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
             {renderDashboard()}
+            {isNotificationCenterOpen && user && (
+                <NotificationCenter userId={user.uid} onClose={() => setIsNotificationCenterOpen(false)} />
+            )}
         </>
     );
 };

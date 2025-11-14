@@ -10,20 +10,18 @@ import { encode, decode, decodeAudioData } from '../utils/audioUtils';
 import { getAi } from '../services/geminiService';
 import { addOrUpdateItem, removeItem } from '../services/inventoryService';
 import { getChatsStream } from '../services/chatService';
-import { LogoutIcon, SearchIcon, ChatIcon } from './icons';
-import { InventoryItem, Chat, UserProfile } from '../types';
+import { getNotificationsStream } from '../services/notificationService';
+import { LogoutIcon, SearchIcon, ChatIcon, BellIcon } from './icons';
+import { InventoryItem, Chat, UserProfile, Notification } from '../types';
 import { ChatParams } from '../App';
 import ChatListModal from './ChatListModal';
 
-type AwaitingPriceInfo = { itemName: string; quantity: number };
-type AwaitingQuantityInfo = { itemName: string };
-type AwaitingExpiryInfo = { itemName: string; quantity: number; price: number };
-
 interface InventoryManagerProps {
     onNavigateToChat: (params: ChatParams) => void;
+    onOpenNotifications: () => void;
 }
 
-const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat }) => {
+const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, onOpenNotifications }) => {
     const { user, userProfile, logOut } = useAuth();
     const { inventory, loading: inventoryLoading } = useInventory();
     
@@ -31,13 +29,13 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat })
     const [isGreeting, setIsGreeting] = useState(false);
     const [statusText, setStatusText] = useState("Tap the mic to manage your stock with Stock Pilot.");
     const [searchTerm, setSearchTerm] = useState('');
-    const [expiringItems, setExpiringItems] = useState<InventoryItem[]>([]);
     const [isChatModalOpen, setIsChatModalOpen] = useState(false);
-    const [totalUnreadCount, setTotalUnreadCount] = useState(0);
+    const [totalUnreadChatCount, setTotalUnreadChatCount] = useState(0);
+    const [totalUnreadNotificationCount, setTotalUnreadNotificationCount] = useState(0);
 
-    const awaitingPriceInfoRef = useRef<AwaitingPriceInfo | null>(null);
-    const awaitingQuantityInfoRef = useRef<AwaitingQuantityInfo | null>(null);
-    const awaitingExpiryInfoRef = useRef<AwaitingExpiryInfo | null>(null);
+    const awaitingPriceInfoRef = useRef<any | null>(null);
+    const awaitingQuantityInfoRef = useRef<any | null>(null);
+    const awaitingExpiryInfoRef = useRef<any | null>(null);
 
     const sessionRef = useRef<Promise<LiveSession> | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -49,14 +47,20 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat })
     const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
     const greetingAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
     
-    // Listen for chat notifications
     useEffect(() => {
         if (!user) return;
-        const unsubscribe = getChatsStream(user.uid, (chats: Chat[]) => {
+        const unsubChats = getChatsStream(user.uid, (chats: Chat[]) => {
             const unreadSum = chats.reduce((sum, chat) => sum + (chat.unreadCount[user.uid] || 0), 0);
-            setTotalUnreadCount(unreadSum);
+            setTotalUnreadChatCount(unreadSum);
         });
-        return () => unsubscribe();
+        const unsubNotifications = getNotificationsStream(user.uid, (notifications: Notification[]) => {
+            const unreadSum = notifications.filter(n => !n.read).length;
+            setTotalUnreadNotificationCount(unreadSum);
+        });
+        return () => {
+            unsubChats();
+            unsubNotifications();
+        };
     }, [user]);
 
     const handleToolCall = useCallback(async (fc: FunctionCall, session: LiveSession): Promise<void> => {
@@ -98,7 +102,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat })
 
                     if (needsExpiry) {
                         awaitingExpiryInfoRef.current = { itemName, quantity, price };
-                        result = { success: true, message: `The price is set. Now, what is the expiry date? Please provide it in YYYY-MM-DD format.` };
+                        result = { success: true, message: `The price is set. Now, what is the expiry date?` };
                     } else {
                         await addOrUpdateItem(user.uid, itemName, quantity, price);
                         result = { success: true, message: `Great, I've added ${quantity} ${itemName} to your inventory.` };
@@ -142,7 +146,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat })
                 response: { result: result.message },
             }
         });
-    }, [user, userProfile, inventory]);
+    }, [user, userProfile]);
     
     const stopSession = useCallback(() => {
         if (!isSessionActiveRef.current) return;
@@ -157,34 +161,21 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat })
         setIsGreeting(false);
         setStatusText("Tap the mic to manage your stock with Stock Pilot.");
 
-        if (mediaStreamRef.current) {
-            mediaStreamRef.current.getTracks().forEach(track => track.stop());
-            mediaStreamRef.current = null;
-        }
+        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
 
-        if (scriptProcessorRef.current) {
-            scriptProcessorRef.current.disconnect();
-            scriptProcessorRef.current = null;
-        }
+        scriptProcessorRef.current?.disconnect();
+        scriptProcessorRef.current = null;
         
-        if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
-            inputAudioContextRef.current.close().catch(e => console.error("Error closing input audio context:", e));
-            inputAudioContextRef.current = null;
-        }
+        inputAudioContextRef.current?.close().catch(console.error);
+        inputAudioContextRef.current = null;
 
-        if (outputAudioContextRef.current) {
-            audioSourcesRef.current.forEach(source => source.stop());
-            audioSourcesRef.current.clear();
-            if (outputAudioContextRef.current.state !== 'closed') {
-                outputAudioContextRef.current.close().catch(e => console.error("Error closing output audio context:", e));
-                outputAudioContextRef.current = null;
-            }
-        }
+        outputAudioContextRef.current?.close().catch(console.error);
+        outputAudioContextRef.current = null;
+        audioSourcesRef.current.clear();
 
-        if (sessionRef.current) {
-            sessionRef.current.then(session => session.close()).catch(e => console.error("Error closing session:", e));
-            sessionRef.current = null;
-        }
+        sessionRef.current?.then(session => session.close()).catch(console.error);
+        sessionRef.current = null;
         
         awaitingPriceInfoRef.current = null;
         awaitingQuantityInfoRef.current = null;
@@ -197,9 +188,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat })
         setIsListening(true);
         setStatusText("Connecting...");
         
-        if (!inputAudioContextRef.current || inputAudioContextRef.current.state === 'closed') {
-            inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-        }
+        inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
        
         try {
             mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -214,6 +203,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat })
         const userCategories = userProfile.categories;
         const needsExpiry = userCategories.some(cat => ['medical', 'grocery', 'sweets'].includes(cat));
         const systemInstruction = `You are a voice-first inventory assistant for a store with categories: ${userCategories.join(', ')}.
+IMPORTANT: You must only respond in English or Hindi. Prefer English. Never use any other language.
 - You must only accept items that are relevant for these categories. If a user tries to add something irrelevant, politely decline.
 - To add an item: Use 'initiateAddItem'. If the user doesn't say how many, the system will ask. Once you know the quantity, you must ask for the price.
 - ${needsExpiry ? "For this store type, items may have an expiry date. After getting the price, you MUST ask for the expiry date and get it in YYYY-MM-DD format." : "For this store type, items DO NOT have an expiry date, so DO NOT ask for one."}
@@ -226,76 +216,46 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
             config: {
                 systemInstruction,
                 responseModalities: [Modality.AUDIO],
-                inputAudioTranscription: {},
-                outputAudioTranscription: {},
                 tools: [{ functionDeclarations: [INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL] }]
             },
             callbacks: {
                 onopen: () => {
                     setStatusText("Listening... Say something.");
                     if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
-
                     const source = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
                     scriptProcessorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
-
-                    scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
-                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                        const l = inputData.length;
-                        const int16 = new Int16Array(l);
-                        for (let i = 0; i < l; i++) {
-                            int16[i] = inputData[i] * 32768;
-                        }
+                    scriptProcessorRef.current.onaudioprocess = (e) => {
+                        const inputData = e.inputBuffer.getChannelData(0);
                         const pcmBlob: GenaiBlob = {
-                            data: encode(new Uint8Array(int16.buffer)),
+                            data: encode(new Uint8Array(new Int16Array(inputData.map(f => f * 32768)).buffer)),
                             mimeType: 'audio/pcm;rate=16000',
                         };
-                        sessionRef.current?.then((session) => {
-                            if (isSessionActiveRef.current) {
-                                session.sendRealtimeInput({ media: pcmBlob });
-                            }
-                        });
+                        sessionRef.current?.then((s) => isSessionActiveRef.current && s.sendRealtimeInput({ media: pcmBlob }));
                     };
-
                     source.connect(scriptProcessorRef.current);
                     scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
                 },
-                onmessage: async (message: LiveServerMessage) => {
-                    if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
-                        const base64Audio = message.serverContent.modelTurn.parts[0].inlineData.data;
+                onmessage: async (msg: LiveServerMessage) => {
+                    if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
+                        const base64 = msg.serverContent.modelTurn.parts[0].inlineData.data;
                         if (outputAudioContextRef.current) {
                             audioPlaybackTimeRef.current = Math.max(audioPlaybackTimeRef.current, outputAudioContextRef.current.currentTime);
-                            const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current, 24000, 1);
-                            const source = outputAudioContextRef.current.createBufferSource();
-                            source.buffer = audioBuffer;
-                            source.connect(outputAudioContextRef.current.destination);
-                            
-                            source.addEventListener('ended', () => {
-                                audioSourcesRef.current.delete(source);
-                            });
-
-                            source.start(audioPlaybackTimeRef.current);
-                            audioPlaybackTimeRef.current += audioBuffer.duration;
-                            audioSourcesRef.current.add(source);
+                            const buffer = await decodeAudioData(decode(base64), outputAudioContextRef.current, 24000, 1);
+                            const sourceNode = outputAudioContextRef.current.createBufferSource();
+                            sourceNode.buffer = buffer;
+                            sourceNode.connect(outputAudioContextRef.current.destination);
+                            sourceNode.onended = () => audioSourcesRef.current.delete(sourceNode);
+                            sourceNode.start(audioPlaybackTimeRef.current);
+                            audioPlaybackTimeRef.current += buffer.duration;
+                            audioSourcesRef.current.add(sourceNode);
                         }
                     }
-
-                    if (message.toolCall?.functionCalls) {
-                        const session = await sessionRef.current;
-                        if (session) {
-                            for (const fc of message.toolCall.functionCalls) {
-                                handleToolCall(fc, session);
-                            }
-                        }
+                    if (msg.toolCall?.functionCalls) {
+                        const s = await sessionRef.current;
+                        if (s) msg.toolCall.functionCalls.forEach(fc => handleToolCall(fc, s));
                     }
-
-                    if (message.serverContent?.outputTranscription?.text) {
-                        setStatusText(`Gemini: "${message.serverContent.outputTranscription.text}"`);
-                    } else if (message.serverContent?.inputTranscription?.text) {
-                         setStatusText(`You: "${message.serverContent.inputTranscription.text}"`);
-                    }
-
-                    if (message.serverContent?.interrupted) {
-                         audioSourcesRef.current.forEach(source => source.stop());
+                    if (msg.serverContent?.interrupted) {
+                         audioSourcesRef.current.forEach(s => s.stop());
                          audioSourcesRef.current.clear();
                          audioPlaybackTimeRef.current = 0;
                     }
@@ -305,104 +265,49 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                     setStatusText("An error occurred. Please try again.");
                     stopSession();
                 },
-                onclose: () => {
-                    if (isSessionActiveRef.current) {
-                        stopSession();
-                    }
-                },
+                onclose: () => isSessionActiveRef.current && stopSession(),
             },
         });
     };
 
     const startAndGreetSession = async () => {
         if (!process.env.API_KEY || !user) return;
-        
         isSessionActiveRef.current = true;
         setIsGreeting(true);
         setStatusText("Assistant is speaking...");
-
-        if (!outputAudioContextRef.current || outputAudioContextRef.current.state === 'closed') {
-            outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        }
-        const outputCtx = outputAudioContextRef.current;
-        audioPlaybackTimeRef.current = outputCtx.currentTime;
-
+        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         try {
             const ai = getAi();
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: 'Say cheerfully: Hello, how can I help you?' }] }],
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: {
-                        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-                    },
-                },
+            const res = await ai.models.generateContent({
+                model: "gemini-2.5-flash-preview-tts", contents: [{ parts: [{ text: 'Hello, how can I help you?' }] }],
+                config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } },
             });
-
-            const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-            if (!base64Audio) throw new Error("TTS response was empty.");
-
-            const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
-            const source = outputCtx.createBufferSource();
+            const base64 = res.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (!base64 || !outputAudioContextRef.current) throw new Error("TTS failed.");
+            const buffer = await decodeAudioData(decode(base64), outputAudioContextRef.current, 24000, 1);
+            const source = outputAudioContextRef.current.createBufferSource();
             greetingAudioSourceRef.current = source;
-            source.buffer = audioBuffer;
-            source.connect(outputCtx.destination);
-            
-            source.onended = () => {
-                greetingAudioSourceRef.current = null;
-                if (isSessionActiveRef.current) {
-                    setIsGreeting(false);
-                    startListeningSession();
-                }
-            };
+            source.buffer = buffer;
+            source.connect(outputAudioContextRef.current.destination);
+            source.onended = () => { if (isSessionActiveRef.current) startListeningSession(); };
             source.start();
-
         } catch (error) {
-            console.error("Failed to play greeting:", error);
-            setStatusText("Error starting. Tap mic to try again.");
+            console.error("Greeting failed:", error);
             stopSession();
         }
     };
     
-    useEffect(() => {
-        if (inventory.length > 0) {
-            const now = new Date();
-            const tenDaysFromNow = new Date();
-            tenDaysFromNow.setDate(now.getDate() + 10);
-
-            const expiring = inventory.filter(item => {
-                if (!item.expiryDate) return false;
-                const expiry = new Date(item.expiryDate);
-                return expiry >= now && expiry <= tenDaysFromNow;
-            });
-            setExpiringItems(expiring);
-        }
-    }, [inventory]);
-
     const handleMicClick = () => {
-        if (isListening || isGreeting) {
-            stopSession();
-        } else {
-            startAndGreetSession();
-        }
+        if (isListening || isGreeting) stopSession();
+        else startAndGreetSession();
     };
 
-    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setSearchTerm(event.target.value);
-    };
-
-    const filteredInventory = inventory.filter(item =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value);
+    const filteredInventory = inventory.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
     const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
     const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.price, 0);
     
-    useEffect(() => {
-        return () => stopSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    useEffect(() => () => stopSession(), [stopSession]);
 
     return (
         <>
@@ -413,69 +318,25 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                         <p className="text-gray-500 dark:text-gray-400 text-center md:text-left">by SoundSync | Welcome, {userProfile?.name}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <div className="relative">
-                            <span className="absolute inset-y-0 left-0 flex items-center pl-3">
-                                <SearchIcon className="w-5 h-5 text-gray-400" />
-                            </span>
-                            <input
-                                type="text"
-                                placeholder="Search inventory..."
-                                value={searchTerm}
-                                onChange={handleSearchChange}
-                                className="w-full md:w-48 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-md py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                        </div>
-                        <button onClick={() => setIsChatModalOpen(true)} title="Chats" className="relative p-3 text-sm font-medium text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                        <div className="relative"><SearchIcon className="absolute inset-y-0 left-3 w-5 h-5 text-gray-400" /><input type="text" placeholder="Search..." value={searchTerm} onChange={handleSearchChange} className="w-full md:w-40 bg-gray-200 dark:bg-gray-700 rounded-md py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+                        <button onClick={() => onOpenNotifications()} title="Notifications" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
+                            <BellIcon className="w-5 h-5" />
+                            {totalUnreadNotificationCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadNotificationCount}</span>}
+                        </button>
+                        <button onClick={() => setIsChatModalOpen(true)} title="Chats" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
                             <ChatIcon className="w-5 h-5" />
-                            {totalUnreadCount > 0 && (
-                                <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white ring-2 ring-white dark:ring-gray-700">
-                                    {totalUnreadCount}
-                                </span>
-                            )}
+                            {totalUnreadChatCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadChatCount}</span>}
                         </button>
                         <MicButton isListening={isListening || isGreeting} onClick={handleMicClick} />
-                        <button onClick={logOut} title="Logout" className="p-3 text-sm font-medium text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
-                            <LogoutIcon className="w-5 h-5" />
-                        </button>
+                        <button onClick={logOut} title="Logout" className="p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600"><LogoutIcon className="w-5 h-5" /></button>
                     </div>
                 </header>
-
-                <div className="text-center mb-4">
-                    <p className="text-gray-600 dark:text-gray-300 h-5 transition-opacity duration-300">{statusText}</p>
-                </div>
-
-                {expiringItems.length > 0 && (
-                     <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 dark:bg-yellow-900/50 dark:border-yellow-600 dark:text-yellow-300 px-4 py-3 rounded-lg relative mb-4" role="alert">
-                        <strong className="font-bold">Expiry Alert!</strong>
-                        <span className="block sm:inline ml-2">
-                            {expiringItems.length} item(s) are expiring within 10 days.
-                        </span>
-                        <ul className="list-disc list-inside mt-2 text-sm">
-                            {expiringItems.map(item => (
-                                <li key={item.id} className="capitalize">{item.name} (Expires on: {item.expiryDate})</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-
+                <div className="text-center mb-4"><p className="text-gray-600 dark:text-gray-300 h-5">{statusText}</p></div>
                 <div className="mb-8">
-                    <InventoryTable 
-                        items={filteredInventory} 
-                        loading={inventoryLoading} 
-                        totalItems={totalItems} 
-                        totalValue={totalValue}
-                        expiringItems={expiringItems}
-                        onStartChat={() => setIsChatModalOpen(true)} // Re-route chat button to modal
-                    />
+                    <InventoryTable items={filteredInventory} loading={inventoryLoading} totalItems={totalItems} totalValue={totalValue} onStartChat={() => setIsChatModalOpen(true)} />
                 </div>
             </main>
-            {isChatModalOpen && userProfile && (
-                <ChatListModal 
-                    currentUserProfile={userProfile}
-                    onClose={() => setIsChatModalOpen(false)}
-                    onNavigateToChat={onNavigateToChat}
-                />
-            )}
+            {isChatModalOpen && userProfile && <ChatListModal currentUserProfile={userProfile} onClose={() => setIsChatModalOpen(false)} onNavigateToChat={onNavigateToChat} />}
         </>
     );
 };

@@ -2,30 +2,40 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getChatsStream } from '../services/chatService';
-import { Chat } from '../types';
-import { LogoutIcon } from './icons';
+import { getNotificationsStream } from '../services/notificationService';
+import { Chat, Notification } from '../types';
+import { LogoutIcon, BellIcon } from './icons';
 import { ChatParams } from '../App';
 
 interface SupplierDashboardProps {
     onNavigateToChat: (params: ChatParams) => void;
+    onOpenNotifications: () => void;
 }
 
-const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ onNavigateToChat }) => {
+const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ onNavigateToChat, onOpenNotifications }) => {
     const { user, userProfile, logOut } = useAuth();
     const [chats, setChats] = useState<Chat[]>([]);
     const [loading, setLoading] = useState(true);
-    const [totalUnreadCount, setTotalUnreadCount] = useState(0);
+    const [totalUnreadChatCount, setTotalUnreadChatCount] = useState(0);
+    const [totalUnreadNotificationCount, setTotalUnreadNotificationCount] = useState(0);
 
     useEffect(() => {
         if (!userProfile?.uid) return;
         setLoading(true);
-        const unsubscribe = getChatsStream(userProfile.uid, (fetchedChats) => {
+        const unsubChats = getChatsStream(userProfile.uid, (fetchedChats) => {
             setChats(fetchedChats);
             const unreadSum = fetchedChats.reduce((sum, chat) => sum + (chat.unreadCount[userProfile.uid] || 0), 0);
-            setTotalUnreadCount(unreadSum);
+            setTotalUnreadChatCount(unreadSum);
             setLoading(false);
         });
-        return () => unsubscribe();
+        const unsubNotifications = getNotificationsStream(userProfile.uid, (notifications: Notification[]) => {
+            const unreadSum = notifications.filter(n => !n.read).length;
+            setTotalUnreadNotificationCount(unreadSum);
+        });
+        return () => {
+            unsubChats();
+            unsubNotifications();
+        };
     }, [userProfile?.uid]);
 
     const groupedChats = useMemo(() => {
@@ -57,16 +67,22 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ onNavigateToChat 
                     <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Supplier Dashboard</h1>
                     <p className="text-gray-500 dark:text-gray-400">Welcome, {userProfile?.name}</p>
                 </div>
-                 <button onClick={logOut} title="Logout" className="p-3 text-sm font-medium text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
-                    <LogoutIcon className="w-5 h-5" />
-                </button>
+                 <div className="flex items-center gap-3">
+                    <button onClick={onOpenNotifications} title="Notifications" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
+                        <BellIcon className="w-5 h-5" />
+                        {totalUnreadNotificationCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadNotificationCount}</span>}
+                    </button>
+                    <button onClick={logOut} title="Logout" className="p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
+                        <LogoutIcon className="w-5 h-5" />
+                    </button>
+                </div>
             </header>
             <div className="bg-white dark:bg-gray-800 dark:bg-opacity-50 backdrop-blur-md rounded-xl shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                     <span>Matched Seller Chats</span>
-                    {totalUnreadCount > 0 && (
+                    {totalUnreadChatCount > 0 && (
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                            {totalUnreadCount}
+                            {totalUnreadChatCount}
                         </span>
                     )}
                 </h2>

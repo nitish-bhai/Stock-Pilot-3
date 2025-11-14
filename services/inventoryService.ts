@@ -1,7 +1,8 @@
 
 import { db } from './firebase';
-import { collection, query, onSnapshot, Unsubscribe, addDoc, doc, updateDoc, deleteDoc, where, getDocs, runTransaction, DocumentReference } from 'firebase/firestore';
+import { collection, query, onSnapshot, Unsubscribe, addDoc, doc, updateDoc, deleteDoc, where, getDocs, runTransaction, DocumentReference, Timestamp } from 'firebase/firestore';
 import { InventoryItem } from '../types';
+import { deleteNotificationsForItem } from './notificationService';
 
 export const getInventoryStream = (userId: string, callback: (items: InventoryItem[]) => void): Unsubscribe => {
     const itemsCollection = collection(db, `users/${userId}/inventory`);
@@ -40,29 +41,37 @@ export const addOrUpdateItem = async (userId: string, itemName: string, quantity
     
     await runTransaction(db, async (transaction) => {
         const q = query(itemRef, where("name", "==", normalizedItemName));
-        const snapshot = await getDocs(q);
+        const snapshot = await getDocs(q); // Note: getDocs is not transactional but is safe for this check-then-write pattern.
         
-        const newItemData: any = { 
+        let newItemData: Partial<InventoryItem> = { 
             name: normalizedItemName, 
             quantity, 
             price 
         };
+
         if (expiryDate) {
             newItemData.expiryDate = expiryDate;
+            const expiry = new Date(expiryDate);
+            expiry.setHours(23, 59, 59, 999); // Set to end of day
+            newItemData.expiryTimestamp = Timestamp.fromDate(expiry);
+            newItemData.expiryStatus = 'none';
+            newItemData.alertRules = { notifyBeforeDays: 7, notifyWhenExpired: true };
         }
 
         if (snapshot.empty) {
             transaction.set(doc(itemRef), newItemData);
         } else {
             const existingDoc = snapshot.docs[0];
-            const existingData = existingDoc.data();
+            const existingData = existingDoc.data() as InventoryItem;
             const newQuantity = existingData.quantity + quantity;
             
             const updatedData: any = { quantity: newQuantity, price };
              if (expiryDate) {
-                updatedData.expiryDate = expiryDate;
-            } else if (existingData.expiryDate) {
-                updatedData.expiryDate = existingData.expiryDate; // Preserve existing expiry if new one isn't provided
+                updatedData.expiryDate = newItemData.expiryDate;
+                updatedData.expiryTimestamp = newItemData.expiryTimestamp;
+                 // Reset status on update
+                updatedData.expiryStatus = 'none';
+                updatedData.lastAlertedAt = null;
             }
 
             transaction.update(existingDoc.ref, updatedData);
@@ -71,30 +80,38 @@ export const addOrUpdateItem = async (userId: string, itemName: string, quantity
 };
 
 export const removeItem = async (userId: string, itemName: string, quantityToRemove: number): Promise<{ success: boolean; message: string }> => {
-    const itemRef = collection(db, `users/${userId}/inventory`);
     const normalizedItemName = itemName.toLowerCase();
+    const itemData = await findItemByName(userId, normalizedItemName);
+    
+    if (!itemData) {
+        return { success: false, message: `I couldn't find any ${itemName} in the inventory.` };
+    }
 
-    return await runTransaction(db, async (transaction) => {
-        const q = query(itemRef, where("name", "==", normalizedItemName));
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-            return { success: false, message: `I couldn't find any ${itemName} in the inventory.` };
+    const transactionResult = await runTransaction(db, async (transaction) => {
+        const itemDoc = await transaction.get(itemData.docRef);
+        if (!itemDoc.exists()) {
+            return { success: false, message: "This item was already removed." };
         }
-
-        const existingDoc = snapshot.docs[0];
-        const currentQuantity = existingDoc.data().quantity;
-
+        
+        const currentQuantity = itemDoc.data().quantity;
         if (currentQuantity < quantityToRemove) {
             return { success: false, message: `You only have ${currentQuantity} ${itemName}. I can't remove ${quantityToRemove}.` };
         }
 
         const newQuantity = currentQuantity - quantityToRemove;
         if (newQuantity === 0) {
-            transaction.delete(existingDoc.ref);
+            transaction.delete(itemDoc.ref);
+            return { success: true, message: `Removed all ${itemName}.`, wasFullyDeleted: true };
         } else {
-            transaction.update(existingDoc.ref, { quantity: newQuantity });
+            transaction.update(itemDoc.ref, { quantity: newQuantity });
+            return { success: true, message: `Removed ${quantityToRemove} ${itemName}.`, wasFullyDeleted: false };
         }
-        return { success: true, message: `Removed ${quantityToRemove} ${itemName}.` };
     });
+
+    // After the transaction, if the item was fully deleted, clean up its notifications.
+    if (transactionResult.success && transactionResult.wasFullyDeleted) {
+        await deleteNotificationsForItem(userId, itemData.id);
+    }
+    
+    return { success: transactionResult.success, message: transactionResult.message };
 };

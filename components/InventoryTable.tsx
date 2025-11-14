@@ -8,20 +8,40 @@ interface InventoryTableProps {
     loading: boolean;
     totalItems: number;
     totalValue: number;
-    expiringItems: InventoryItem[];
     onStartChat: (item: InventoryItem) => void;
 }
 
-const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalItems, totalValue, expiringItems, onStartChat }) => {
+const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalItems, totalValue, onStartChat }) => {
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-IN', {
             style: 'currency',
             currency: 'INR',
         }).format(amount);
     };
+    
+    const getExpiryInfo = (item: InventoryItem): { text: string; className: string; rowClassName: string } => {
+        if (!item.expiryTimestamp) {
+            return { text: 'N/A', className: '', rowClassName: 'hover:bg-gray-50 dark:hover:bg-gray-700/50' };
+        }
+        const now = new Date();
+        const expiryDate = item.expiryTimestamp.toDate();
+        const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-    const isExpiring = (item: InventoryItem) => {
-        return expiringItems.some(expiringItem => expiringItem.id === item.id);
+        if (daysLeft < 0) {
+            return {
+                text: 'Expired',
+                className: 'font-bold text-red-600 dark:text-red-400',
+                rowClassName: 'bg-red-100 hover:bg-red-200 dark:bg-red-500/20 dark:hover:bg-red-500/30'
+            };
+        }
+        if (daysLeft <= (item.alertRules?.notifyBeforeDays || 7)) {
+            return {
+                text: `in ${daysLeft} days`,
+                className: 'font-bold text-yellow-600 dark:text-yellow-400',
+                rowClassName: 'bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-500/20 dark:hover:bg-yellow-500/30'
+            };
+        }
+        return { text: item.expiryDate || 'N/A', className: '', rowClassName: 'hover:bg-gray-50 dark:hover:bg-gray-700/50' };
     };
 
     return (
@@ -33,7 +53,7 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalIt
                             <th scope="col" className="px-6 py-3">Product Name</th>
                             <th scope="col" className="px-6 py-3 text-right">Quantity</th>
                             <th scope="col" className="px-6 py-3 text-right">Price/Item</th>
-                            <th scope="col" className="px-6 py-3">Expiry Date</th>
+                            <th scope="col" className="px-6 py-3">Expiry</th>
                             <th scope="col" className="px-6 py-3 text-right">Total Value</th>
                             <th scope="col" className="px-6 py-3 text-center">Actions</th>
                         </tr>
@@ -44,33 +64,33 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalIt
                         ) : items.length === 0 ? (
                             <tr><td colSpan={6} className="text-center p-6">Your inventory is empty. Tap the mic to add items.</td></tr>
                         ) : (
-                            items.sort((a, b) => a.name.localeCompare(b.name)).map((item) => (
+                            items.sort((a, b) => a.name.localeCompare(b.name)).map((item) => {
+                                const expiryInfo = getExpiryInfo(item);
+                                return (
                                 <tr 
                                     key={item.id} 
-                                    className={`border-b border-gray-200 dark:border-gray-700 transition-colors ${
-                                        isExpiring(item) 
-                                        ? 'bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-500/20 dark:hover:bg-yellow-500/30' 
-                                        : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                                    }`}
+                                    className={`border-b border-gray-200 dark:border-gray-700 transition-colors ${expiryInfo.rowClassName}`}
                                 >
                                     <th scope="row" className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap capitalize">
                                         {item.name}
                                     </th>
                                     <td className="px-6 py-4 text-right">{item.quantity}</td>
                                     <td className="px-6 py-4 text-right">{formatCurrency(item.price)}</td>
-                                    <td className={`px-6 py-4 ${isExpiring(item) ? 'font-bold text-yellow-600 dark:text-yellow-300' : ''}`}>{item.expiryDate || 'N/A'}</td>
+                                    <td className={`px-6 py-4 ${expiryInfo.className}`}>{expiryInfo.text}</td>
                                     <td className="px-6 py-4 text-right font-semibold">{formatCurrency(item.price * item.quantity)}</td>
                                     <td className="px-6 py-4 text-center">
+                                         {/* The chat button now opens the modal which lists all suppliers */}
                                         <button 
                                             onClick={() => onStartChat(item)} 
                                             className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
-                                            title={`Chat with supplier for ${item.name}`}
+                                            title={`Find suppliers for ${item.name}`}
                                         >
                                             <ChatIcon className="w-6 h-6" />
                                         </button>
                                     </td>
                                 </tr>
-                            ))
+                                )
+                            })
                         )}
                     </tbody>
                     <tfoot>

@@ -74,3 +74,9 @@ export const CheckDoubleIcon: React.FC<{ className?: string }> = ({ className })
         <path fillRule="evenodd" d="M11.28 11.47a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06-1.06L9.69 12 2.72 5.03a.75.75 0 0 1 1.06-1.06l7.5 7.5Z" clipRule="evenodd" />
     </svg>
 );
+
+export const BellIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M12 2.25c-2.429 0-4.303 1.13-5.52 2.502C5.275 6.11 5.003 7.52 5.003 8.995v2.858c0 .701-.131 1.38-.378 2.012-.224.568-.52 1.103-.865 1.586a.75.75 0 0 0 .59.13h11.294a.75.75 0 0 0 .59-.13c-.345-.483-.641-1.018-.865-1.586-.247-.632-.378-1.311-.378-2.012V8.995c0-1.475-.272-2.885-1.477-4.243C16.303 3.38 14.428 2.25 12 2.25ZM10.5 18a1.5 1.5 0 1 1 3 0v.001a1.5 1.5 0 1 1-3 0v-.001Z" clipRule="evenodd" />
+    </svg>
+);

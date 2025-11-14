@@ -135,23 +135,39 @@ export const markMessagesAsSeen = async (chatId: string, userId: string): Promis
     const chatRef = doc(db, 'chats', chatId);
     const messagesRef = collection(db, `chats/${chatId}/messages`);
     
-    // First, reset the unread count for the user
     const chatSnap = await getDoc(chatRef);
-    if (chatSnap.exists() && chatSnap.data().unreadCount[userId] > 0) {
+    if (!chatSnap.exists()) return;
+
+    // First, reset the unread count for the user
+    if (chatSnap.data().unreadCount[userId] > 0) {
         await updateDoc(chatRef, {
             [`unreadCount.${userId}`]: 0
         });
     }
 
-    // Then, update the status of all messages sent by the other person
-    const q = query(messagesRef, where('senderId', '!=', userId), where('deliveryStatus', '!=', 'seen'));
+    const participants = chatSnap.data().participants as string[];
+    const otherUserId = participants.find(p => p !== userId);
+
+    if (!otherUserId) return; // No one else in the chat.
+
+    // Then, update the status of all messages sent by the other person.
+    // We query for all messages from the other user and filter on the client
+    // to avoid a composite index requirement on Firestore.
+    const q = query(messagesRef, where('senderId', '==', otherUserId));
     const messagesToUpdateSnap = await getDocs(q);
     
     if (messagesToUpdateSnap.empty) return;
 
     const batch = writeBatch(db);
+    let hasUpdates = false;
     messagesToUpdateSnap.forEach(doc => {
-        batch.update(doc.ref, { deliveryStatus: 'seen', isRead: true });
+        if (doc.data().deliveryStatus !== 'seen') {
+            batch.update(doc.ref, { deliveryStatus: 'seen', isRead: true });
+            hasUpdates = true;
+        }
     });
-    await batch.commit();
+    
+    if (hasUpdates) {
+        await batch.commit();
+    }
 };

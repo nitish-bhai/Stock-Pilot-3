@@ -1,5 +1,6 @@
 
 import { User as FirebaseUser } from 'firebase/auth';
+import { Timestamp } from 'firebase/firestore';
 
 export interface InventoryItem {
     id: string;
@@ -8,6 +9,14 @@ export interface InventoryItem {
     price: number; // Price per item in INR
     supplierId?: string;
     expiryDate?: string; // YYYY-MM-DD format
+    // New fields for expiry management
+    expiryTimestamp?: Timestamp;
+    expiryStatus: 'none' | 'upcoming' | 'expired';
+    alertRules: {
+        notifyBeforeDays: number;
+        notifyWhenExpired: boolean;
+    };
+    lastAlertedAt?: Timestamp;
 }
 
 export type User = FirebaseUser;
@@ -46,4 +55,20 @@ export interface Message {
     timestamp: any; // Firestore Timestamp
     isRead: boolean;
     deliveryStatus: 'sent' | 'delivered' | 'seen';
+}
+
+export interface Notification {
+    id: string;
+    userId: string;
+    title: string;
+    body: string;
+    createdAt: Timestamp;
+    read: boolean;
+    type: 'expiry';
+    meta: {
+        itemId: string;
+        itemName: string;
+        expiryTimestamp: Timestamp;
+        daysLeft: number;
+    };
 }
