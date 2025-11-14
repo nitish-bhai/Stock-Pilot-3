@@ -81,14 +81,6 @@ export const BellIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-export const GoogleSheetsIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" className={className}>
-        <path fill="#188038" d="M26,14h-4v-4h4V14z M22,24h-4v-4h4V24z M16,14h-4v-4h4V14z M16,24h-4v-4h4V24z M10,14H6v-4h4V14z M10,24H6v-4h4V24z"/>
-        <path fill="#009688" d="M18 4H6v24h20V12l-8-8z"/>
-        <path fill="#00675B" d="M18 4v8h8z"/>
-    </svg>
-);
-
 // Landing Page Icons
 export const InventoryIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>

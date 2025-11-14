@@ -29,7 +29,6 @@ export interface UserProfile {
     categories: string[]; // For both sellers (store types) and suppliers (supply types)
     photoURL?: string;
     loginMethod: 'email' | 'google';
-    spreadsheetId?: string; // ID for the Google Sheet inventory export
 }
 
 export interface Chat {
