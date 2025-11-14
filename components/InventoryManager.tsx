@@ -11,17 +11,25 @@ import { getAi } from '../services/geminiService';
 import { addOrUpdateItem, removeItem } from '../services/inventoryService';
 import { getChatsStream } from '../services/chatService';
 import { getNotificationsStream } from '../services/notificationService';
-import { LogoutIcon, SearchIcon, ChatIcon, BellIcon } from './icons';
+import { LogoutIcon, SearchIcon, ChatIcon, BellIcon, GoogleSheetsIcon } from './icons';
 import { InventoryItem, Chat, UserProfile, Notification } from '../types';
 import { ChatParams } from '../App';
 import ChatListModal from './ChatListModal';
+import { exportInventoryToSheet } from '../services/googleSheetsService';
+
+interface ToastState {
+    message: string;
+    linkHref?: string;
+    linkText?: string;
+}
 
 interface InventoryManagerProps {
     onNavigateToChat: (params: ChatParams) => void;
     onOpenNotifications: () => void;
+    setToast: (toast: ToastState) => void;
 }
 
-const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, onOpenNotifications }) => {
+const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, onOpenNotifications, setToast }) => {
     const { user, userProfile, logOut } = useAuth();
     const { inventory, loading: inventoryLoading } = useInventory();
     
@@ -32,6 +40,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     const [isChatModalOpen, setIsChatModalOpen] = useState(false);
     const [totalUnreadChatCount, setTotalUnreadChatCount] = useState(0);
     const [totalUnreadNotificationCount, setTotalUnreadNotificationCount] = useState(0);
+    const [isExporting, setIsExporting] = useState(false);
     
     const [transcript, setTranscript] = useState<{ speaker: 'user' | 'assistant', text: string }[]>([]);
     const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -69,6 +78,32 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     useEffect(() => {
         transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [transcript]);
+    
+    const handleExport = async () => {
+        if (!userProfile || isExporting) return;
+        setIsExporting(true);
+        setToast({ message: 'Starting export...' });
+        try {
+            const sheetUrl = await exportInventoryToSheet(userProfile, inventory);
+            if (sheetUrl) {
+                setToast({ 
+                    message: 'Inventory exported successfully!', 
+                    linkHref: sheetUrl, 
+                    linkText: 'Open Sheet' 
+                });
+            } else {
+                 throw new Error("Export failed to return a URL.");
+            }
+        } catch (error: any) {
+            console.error("Export failed:", error);
+            const errorMessage = error.message.includes('popup-closed-by-user')
+                ? 'Export cancelled. You need to grant permission to create a Google Sheet.'
+                : 'Export failed. Please try again.';
+            setToast({ message: errorMessage });
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     const handleToolCall = useCallback(async (fc: FunctionCall, session: LiveSession): Promise<void> => {
         if (!user || !userProfile) return;
@@ -360,8 +395,11 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white text-center md:text-left">Stock Pilot</h1>
                         <p className="text-gray-500 dark:text-gray-400 text-center md:text-left">by SoundSync | Welcome, {userProfile?.name}</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="relative"><SearchIcon className="absolute inset-y-0 left-3 w-5 h-5 text-gray-400" /><input type="text" placeholder="Search..." value={searchTerm} onChange={handleSearchChange} className="w-full md:w-40 bg-gray-200 dark:bg-gray-700 rounded-md py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+                    <div className="flex items-center gap-2 md:gap-3">
+                        <div className="relative"><SearchIcon className="absolute inset-y-0 left-3 w-5 h-5 text-gray-400" /><input type="text" placeholder="Search..." value={searchTerm} onChange={handleSearchChange} className="w-full md:w-32 bg-gray-200 dark:bg-gray-700 rounded-md py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+                        <button onClick={handleExport} disabled={isExporting} title="Export to Google Sheets" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <GoogleSheetsIcon className="w-5 h-5" />
+                        </button>
                         <button onClick={() => onOpenNotifications()} title="Notifications" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
                             <BellIcon className="w-5 h-5" />
                             {totalUnreadNotificationCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadNotificationCount}</span>}
@@ -374,7 +412,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                         <button onClick={logOut} title="Logout" className="p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600"><LogoutIcon className="w-5 h-5" /></button>
                     </div>
                 </header>
-                <div className="text-center mb-4"><p className="text-gray-600 dark:text-gray-300 h-5">{statusText}</p></div>
+                <div className="text-center mb-4"><p className="text-gray-600 dark:text-gray-300 h-5">{isExporting ? 'Exporting to Google Sheets...' : statusText}</p></div>
                  
                  {transcript.length > 0 && (
                     <div className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 h-32 overflow-y-auto shadow-inner">

@@ -20,10 +20,16 @@ export interface ChatParams {
     chatTitle: string;
 }
 
+interface ToastState {
+    message: string;
+    linkHref?: string;
+    linkText?: string;
+}
+
 const AppContent: React.FC = () => {
     const { user, userProfile, loading } = useAuth();
     const [activeChatParams, setActiveChatParams] = useState<ChatParams | null>(null);
-    const [toastMessage, setToastMessage] = useState('');
+    const [toast, setToast] = useState<ToastState>({ message: '' });
     const lastMessageTimestampRef = React.useRef<any>(null);
     const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
 
@@ -45,7 +51,7 @@ const AppContent: React.FC = () => {
                 
                 if (newTimestamp > lastTimestamp && (latestChat.unreadCount[user.uid] || 0) > 0) {
                     const senderName = latestChat.sellerId === senderId ? latestChat.sellerName : latestChat.supplierName;
-                    setToastMessage(`New message from ${senderName}`);
+                    setToast({ message: `New message from ${senderName}` });
                     lastMessageTimestampRef.current = latestChat.lastMessageTimestamp;
                 }
             }
@@ -84,6 +90,7 @@ const AppContent: React.FC = () => {
                     <InventoryManager 
                         onNavigateToChat={navigateToChat} 
                         onOpenNotifications={() => setIsNotificationCenterOpen(true)} 
+                        setToast={setToast}
                     />
                 </InventoryProvider>
             );
@@ -103,7 +110,12 @@ const AppContent: React.FC = () => {
 
     return (
         <>
-            <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+            <Toast 
+                message={toast.message} 
+                onClose={() => setToast({ message: '' })} 
+                linkHref={toast.linkHref}
+                linkText={toast.linkText}
+            />
             {renderDashboard()}
             {isNotificationCenterOpen && user && (
                 <NotificationCenter userId={user.uid} onClose={() => setIsNotificationCenterOpen(false)} />
