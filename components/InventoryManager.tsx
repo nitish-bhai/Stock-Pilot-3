@@ -32,6 +32,9 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     const [isChatModalOpen, setIsChatModalOpen] = useState(false);
     const [totalUnreadChatCount, setTotalUnreadChatCount] = useState(0);
     const [totalUnreadNotificationCount, setTotalUnreadNotificationCount] = useState(0);
+    
+    const [transcript, setTranscript] = useState<{ speaker: 'user' | 'assistant', text: string }[]>([]);
+    const transcriptEndRef = useRef<HTMLDivElement>(null);
 
     const awaitingPriceInfoRef = useRef<any | null>(null);
     const awaitingQuantityInfoRef = useRef<any | null>(null);
@@ -62,6 +65,10 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
             unsubNotifications();
         };
     }, [user]);
+
+    useEffect(() => {
+        transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [transcript]);
 
     const handleToolCall = useCallback(async (fc: FunctionCall, session: LiveSession): Promise<void> => {
         if (!user || !userProfile) return;
@@ -102,7 +109,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
 
                     if (needsExpiry) {
                         awaitingExpiryInfoRef.current = { itemName, quantity, price };
-                        result = { success: true, message: `The price is set. Now, what is the expiry date?` };
+                        result = { success: true, message: `The price is set. Now, what is the expiry date? Please tell me in Day-Month-Year format.` };
                     } else {
                         await addOrUpdateItem(user.uid, itemName, quantity, price);
                         result = { success: true, message: `Great, I've added ${quantity} ${itemName} to your inventory.` };
@@ -116,8 +123,8 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
                  if (awaitingExpiryInfoRef.current) {
                     const { itemName, quantity, price } = awaitingExpiryInfoRef.current;
                     const { expiryDate } = fc.args;
-                    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) {
-                        result = { success: false, message: "That doesn't look like a valid date format. Please provide it in YYYY-MM-DD format." };
+                    if (!/^\d{2}-\d{2}-\d{4}$/.test(expiryDate)) {
+                        result = { success: false, message: "That doesn't look right. Please provide the date in Day-Month-Year format, for example, 31-12-2025." };
                     } else {
                         await addOrUpdateItem(user.uid, itemName, quantity, price, expiryDate);
                         result = { success: true, message: `Got it. I've added ${quantity} ${itemName} with an expiry date of ${expiryDate}.` };
@@ -160,6 +167,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
         setIsListening(false);
         setIsGreeting(false);
         setStatusText("Tap the mic to manage your stock with Stock Pilot.");
+        setTranscript([]);
 
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
@@ -202,25 +210,31 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
         const ai = getAi();
         const userCategories = userProfile.categories;
         const needsExpiry = userCategories.some(cat => ['medical', 'grocery', 'sweets'].includes(cat));
-        const systemInstruction = `You are a voice-first inventory assistant for a store with categories: ${userCategories.join(', ')}.
-IMPORTANT: You must only respond in English or Hindi. Prefer English. Never use any other language.
-- You must only accept items that are relevant for these categories. If a user tries to add something irrelevant, politely decline.
+        const systemInstruction = `You are a bilingual (English and Hindi) voice-first inventory assistant for a store with categories: ${userCategories.join(', ')}.
+IMPORTANT: You must only respond in English or Hindi. Prefer English.
+- You must only accept items relevant for these categories. If a user tries to add something irrelevant, politely decline.
 - To add an item: Use 'initiateAddItem'. If the user doesn't say how many, the system will ask. Once you know the quantity, you must ask for the price.
-- ${needsExpiry ? "For this store type, items may have an expiry date. After getting the price, you MUST ask for the expiry date and get it in YYYY-MM-DD format." : "For this store type, items DO NOT have an expiry date, so DO NOT ask for one."}
+- ${needsExpiry ? "For this store type, items may have an expiry date. After getting the price, you MUST ask for the expiry date and you MUST explicitly state the required format is Day-Month-Year (DD-MM-YYYY)." : "For this store type, items DO NOT have an expiry date, so DO NOT ask for one."}
 - To remove an item: Use 'removeItem'.
 - To answer questions: Use 'queryInventory' and then answer based on the provided inventory context.
 Keep responses brief and conversational. Current inventory is: ${JSON.stringify(inventory.slice(0, 50))}`;
+
+        let currentInput = '';
+        let currentOutput = '';
 
         sessionRef.current = ai.live.connect({
             model: 'gemini-2.5-flash-native-audio-preview-09-2025',
             config: {
                 systemInstruction,
                 responseModalities: [Modality.AUDIO],
+                inputAudioTranscription: {},
+                outputAudioTranscription: {},
                 tools: [{ functionDeclarations: [INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL] }]
             },
             callbacks: {
                 onopen: () => {
                     setStatusText("Listening... Say something.");
+                    setTranscript([{ speaker: 'assistant', text: "Hello, how can I help you?" }]);
                     if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
                     const source = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
                     scriptProcessorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
@@ -236,6 +250,35 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                     scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
                 },
                 onmessage: async (msg: LiveServerMessage) => {
+                    if (msg.serverContent?.inputTranscription) {
+                        currentInput += msg.serverContent.inputTranscription.text;
+                        setTranscript(prev => {
+                            const last = prev[prev.length - 1];
+                            if (last?.speaker === 'user') {
+                                const newTranscript = [...prev];
+                                newTranscript[newTranscript.length - 1] = { ...last, text: currentInput };
+                                return newTranscript;
+                            }
+                            return [...prev, { speaker: 'user', text: currentInput }];
+                        });
+                    }
+                    if (msg.serverContent?.outputTranscription) {
+                         currentOutput += msg.serverContent.outputTranscription.text;
+                         setTranscript(prev => {
+                            const last = prev[prev.length - 1];
+                            if (last?.speaker === 'assistant') {
+                                const newTranscript = [...prev];
+                                newTranscript[newTranscript.length - 1] = { ...last, text: currentOutput };
+                                return newTranscript;
+                            }
+                            return [...prev, { speaker: 'assistant', text: currentOutput }];
+                        });
+                    }
+                    if(msg.serverContent?.turnComplete) {
+                        currentInput = '';
+                        currentOutput = '';
+                    }
+
                     if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
                         const base64 = msg.serverContent.modelTurn.parts[0].inlineData.data;
                         if (outputAudioContextRef.current) {
@@ -332,8 +375,23 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                     </div>
                 </header>
                 <div className="text-center mb-4"><p className="text-gray-600 dark:text-gray-300 h-5">{statusText}</p></div>
+                 
+                 {transcript.length > 0 && (
+                    <div className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 h-32 overflow-y-auto shadow-inner">
+                        {transcript.map((entry, index) => (
+                            <p key={index} className="text-sm text-gray-700 dark:text-gray-300">
+                                <span className={`font-bold ${entry.speaker === 'user' ? 'text-blue-600 dark:text-blue-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                    {entry.speaker === 'user' ? 'You: ' : 'Assistant: '}
+                                </span>
+                                {entry.text}
+                            </p>
+                        ))}
+                         <div ref={transcriptEndRef} />
+                    </div>
+                )}
+
                 <div className="mb-8">
-                    <InventoryTable items={filteredInventory} loading={inventoryLoading} totalItems={totalItems} totalValue={totalValue} onStartChat={() => setIsChatModalOpen(true)} />
+                    <InventoryTable items={filteredInventory} loading={inventoryLoading} totalItems={totalItems} totalValue={totalValue} onStartChat={() => setIsChatModalOpen(true)} onAddItemClick={handleMicClick} />
                 </div>
             </main>
             {isChatModalOpen && userProfile && <ChatListModal currentUserProfile={userProfile} onClose={() => setIsChatModalOpen(false)} onNavigateToChat={onNavigateToChat} />}

@@ -8,7 +8,7 @@ export interface InventoryItem {
     quantity: number;
     price: number; // Price per item in INR
     supplierId?: string;
-    expiryDate?: string; // YYYY-MM-DD format
+    expiryDate?: string; // DD-MM-YYYY format
     // New fields for expiry management
     expiryTimestamp?: Timestamp;
     expiryStatus: 'none' | 'upcoming' | 'expired';

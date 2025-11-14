@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth, AuthProvider } from './hooks/useAuth';
-import LoginComponent from './components/Login';
 import InventoryManager from './components/InventoryManager';
 import { InventoryProvider } from './hooks/useInventory';
 import SupplierDashboard from './components/SupplierDashboard';
@@ -13,6 +12,7 @@ import Toast from './components/Toast';
 import { Chat } from './types';
 import { useExpiryScheduler } from './hooks/useExpiryScheduler';
 import NotificationCenter from './components/NotificationCenter';
+import LandingPage from './components/landing/LandingPage';
 
 // Define navigation state types
 export interface ChatParams {
@@ -66,7 +66,7 @@ const AppContent: React.FC = () => {
     }
 
     if (!user) {
-        return <LoginComponent />;
+        return <LandingPage />;
     }
     
     if (userProfile && (!userProfile.role || !userProfile.name)) {

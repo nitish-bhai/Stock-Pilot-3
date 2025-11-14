@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { getChatsStream } from '../services/chatService';
+import { getChatsStream, triggerMatching } from '../services/chatService';
 import { getNotificationsStream } from '../services/notificationService';
 import { Chat, Notification } from '../types';
 import { LogoutIcon, BellIcon } from './icons';
@@ -16,6 +16,7 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ onNavigateToChat,
     const { user, userProfile, logOut } = useAuth();
     const [chats, setChats] = useState<Chat[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [totalUnreadChatCount, setTotalUnreadChatCount] = useState(0);
     const [totalUnreadNotificationCount, setTotalUnreadNotificationCount] = useState(0);
 
@@ -37,6 +38,14 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ onNavigateToChat,
             unsubNotifications();
         };
     }, [userProfile?.uid]);
+
+    const handleRefreshMatches = async () => {
+        if (!userProfile) return;
+        setIsRefreshing(true);
+        await triggerMatching(userProfile);
+        // The real-time listener will automatically update the chat list.
+        setTimeout(() => setIsRefreshing(false), 1000); // Prevent spamming
+    };
 
     const groupedChats = useMemo(() => {
         const groups: { [key: string]: Chat[] } = {};
@@ -89,7 +98,21 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ onNavigateToChat,
                 {loading ? (
                     <p className="p-4 text-gray-500 dark:text-gray-400">Finding sellers...</p>
                 ) : chats.length === 0 ? (
-                    <p className="p-4 text-gray-500 dark:text-gray-400">No sellers matching your categories have been found yet. When they are, chats will appear here.</p>
+                    <div className="text-center p-10 md:p-16">
+                        <div className="max-w-md mx-auto">
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">No Connections Yet</h2>
+                            <p className="text-gray-500 dark:text-gray-400 mb-6">
+                                We're looking for sellers who match your categories. Check back soon or refresh to see new connections.
+                            </p>
+                            <button
+                                onClick={handleRefreshMatches}
+                                disabled={isRefreshing}
+                                className="px-6 py-3 text-white bg-indigo-600 rounded-full hover:bg-indigo-700 shadow-lg transition duration-150 ease-in-out font-semibold disabled:bg-gray-400"
+                            >
+                                {isRefreshing ? 'Searching...' : 'Refresh Matches'}
+                            </button>
+                        </div>
+                    </div>
                 ) : (
                     <div className="max-h-[60vh] overflow-y-auto">
                         {Object.entries(groupedChats).map(([category, categoryChats]: [string, Chat[]]) => (

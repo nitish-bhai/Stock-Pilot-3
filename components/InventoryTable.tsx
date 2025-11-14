@@ -8,10 +8,11 @@ interface InventoryTableProps {
     loading: boolean;
     totalItems: number;
     totalValue: number;
-    onStartChat: (item: InventoryItem) => void;
+    onStartChat: () => void;
+    onAddItemClick: () => void;
 }
 
-const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalItems, totalValue, onStartChat }) => {
+const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalItems, totalValue, onStartChat, onAddItemClick }) => {
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-IN', {
             style: 'currency',
@@ -62,7 +63,22 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalIt
                         {loading ? (
                             <tr><td colSpan={6} className="text-center p-6">Loading inventory...</td></tr>
                         ) : items.length === 0 ? (
-                            <tr><td colSpan={6} className="text-center p-6">Your inventory is empty. Tap the mic to add items.</td></tr>
+                            <tr>
+                                <td colSpan={6} className="text-center p-10 md:p-16">
+                                    <div className="max-w-md mx-auto">
+                                        <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">Your Inventory is Empty</h2>
+                                        <p className="text-gray-500 dark:text-gray-400 mb-6">
+                                            Ready to take control of your stock? Add your first item using our smart voice assistant.
+                                        </p>
+                                        <button
+                                            onClick={onAddItemClick}
+                                            className="px-6 py-3 text-white bg-indigo-600 rounded-full hover:bg-indigo-700 shadow-lg transition duration-150 ease-in-out font-semibold"
+                                        >
+                                            Add First Item
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
                         ) : (
                             items.sort((a, b) => a.name.localeCompare(b.name)).map((item) => {
                                 const expiryInfo = getExpiryInfo(item);
@@ -81,7 +97,7 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ items, loading, totalIt
                                     <td className="px-6 py-4 text-center">
                                          {/* The chat button now opens the modal which lists all suppliers */}
                                         <button 
-                                            onClick={() => onStartChat(item)} 
+                                            onClick={onStartChat} 
                                             className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
                                             title={`Find suppliers for ${item.name}`}
                                         >

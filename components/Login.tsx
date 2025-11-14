@@ -3,7 +3,12 @@ import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { EyeIcon, EyeSlashIcon, GoogleIcon } from './icons';
 
-const LoginComponent: React.FC = () => {
+interface LoginComponentProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
+
+const LoginComponent: React.FC<LoginComponentProps> = ({ isOpen, onClose }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [passwordVisible, setPasswordVisible] = useState(false);
@@ -12,9 +17,13 @@ const LoginComponent: React.FC = () => {
     const [role, setRole] = useState<'seller' | 'supplier'>('seller');
     const { signUp, logIn, signInWithGoogle } = useAuth();
 
+    if (!isOpen) return null;
+
     const handleGoogleSignIn = async () => {
         try {
             await signInWithGoogle();
+            // On successful login, the App component will handle navigation, so we can close the modal.
+            onClose(); 
         } catch (err: any) {
             setError(err.message);
         }
@@ -29,14 +38,24 @@ const LoginComponent: React.FC = () => {
             } else {
                 await signUp(email, password, role);
             }
+             // On successful login/signup, close the modal.
+            onClose();
         } catch (err: any) {
             setError(err.message);
         }
     };
 
     return (
-        <div className="flex items-center justify-center min-h-screen">
-            <div className="w-full max-w-md p-8 space-y-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm p-4"
+            onClick={onClose}
+        >
+            <div 
+                className="w-full max-w-md p-8 space-y-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg relative"
+                onClick={e => e.stopPropagation()}
+            >
+                <button onClick={onClose} className="absolute top-2 right-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 text-3xl font-light">&times;</button>
+
                 <div className="text-center">
                     <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Stock Pilot</h1>
                     <p className="text-gray-500 dark:text-gray-400">by SoundSync</p>
@@ -61,9 +80,9 @@ const LoginComponent: React.FC = () => {
                 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                        <label htmlFor="email" className="text-sm font-medium text-gray-600 dark:text-gray-300">Email</label>
+                        <label htmlFor="email-auth" className="text-sm font-medium text-gray-600 dark:text-gray-300">Email</label>
                         <input
-                            id="email"
+                            id="email-auth"
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -72,10 +91,10 @@ const LoginComponent: React.FC = () => {
                         />
                     </div>
                     <div>
-                        <label htmlFor="password"className="text-sm font-medium text-gray-600 dark:text-gray-300">Password</label>
+                        <label htmlFor="password-auth"className="text-sm font-medium text-gray-600 dark:text-gray-300">Password</label>
                         <div className="relative">
                             <input
-                                id="password"
+                                id="password-auth"
                                 type={passwordVisible ? 'text' : 'password'}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}

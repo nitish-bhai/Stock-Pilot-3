@@ -44,7 +44,7 @@ export const PROVIDE_ITEM_EXPIRY_DATE_TOOL: FunctionDeclaration = {
     parameters: {
         type: Type.OBJECT,
         properties: {
-            expiryDate: { type: Type.STRING, description: 'The expiry date of the item. You must parse any natural language dates (e.g., "in 6 months", "next Tuesday") and convert them to a strict YYYY-MM-DD format.' },
+            expiryDate: { type: Type.STRING, description: 'The expiry date of the item. You must parse any natural language dates (e.g., "in 6 months", "next Tuesday") and convert them to a strict DD-MM-YYYY format.' },
         },
         required: ['expiryDate'],
     },

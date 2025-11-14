@@ -51,9 +51,13 @@ export const addOrUpdateItem = async (userId: string, itemName: string, quantity
 
         if (expiryDate) {
             newItemData.expiryDate = expiryDate;
-            const expiry = new Date(expiryDate);
-            expiry.setHours(23, 59, 59, 999); // Set to end of day
-            newItemData.expiryTimestamp = Timestamp.fromDate(expiry);
+            const parts = expiryDate.split('-');
+            if (parts.length === 3) {
+                 // Format is DD-MM-YYYY, but Date constructor needs YYYY, MM-1, DD
+                const expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                expiry.setHours(23, 59, 59, 999); // Set to end of day
+                newItemData.expiryTimestamp = Timestamp.fromDate(expiry);
+            }
             newItemData.expiryStatus = 'none';
             newItemData.alertRules = { notifyBeforeDays: 7, notifyWhenExpired: true };
         }
