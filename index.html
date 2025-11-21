@@ -5,23 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Stock Pilot by SoundSync</title>
     <script src="https://cdn.tailwindcss.com"></script>
-  <script type="importmap">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            animation: {
+              'fade-in-down': 'fade-in-down 0.5s ease-out forwards',
+            },
+            keyframes: {
+              'fade-in-down': {
+                '0%': { opacity: '0', transform: 'translateY(-10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+            }
+          },
+        },
+      }
+    </script>
+    <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css" />
+<script>
+  // Apply theme from localStorage before React loads to prevent FOUC and theme-related render issues.
+  (function() {
+    try {
+      const theme = localStorage.getItem('theme');
+      if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+    } catch (e) {
+      // In case of any error (e.g., localStorage is disabled), do nothing.
+    }
+  })();
+</script>
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "buffer": "https://aistudiocdn.com/buffer@^6.0.3",
+    "long": "https://aistudiocdn.com/long@^5.2.3",
+    "react": "https://aistudiocdn.com/react@^18.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^18.2.0/",
+    "react/": "https://aistudiocdn.com/react@^18.2.0/",
     "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
-    "agora-rtm-sdk": "https://aistudiocdn.com/agora-rtm-sdk@^1.5.1",
-    "buffer": "https://aistudiocdn.com/buffer@^6.0.3",
-    "long": "https://aistudiocdn.com/long@^5.2.3"
+    "aos": "https://aistudiocdn.com/aos@^2.3.4",
+    "aos/": "https://aistudiocdn.com/aos@^2.3.4/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "@vitejs/plugin-legacy": "https://aistudiocdn.com/@vitejs/plugin-legacy@^7.2.1"
   }
 }
 </script>
 </head>
   <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-white transition-colors duration-300">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

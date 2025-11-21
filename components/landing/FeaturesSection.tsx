@@ -1,6 +1,4 @@
-
 import React from 'react';
-import useScrollAnimation from '../../hooks/useScrollAnimation';
 import { ChatIcon, ExpiryAlertIcon, SmartMatchIcon, SecureAuthIcon, CloudSyncIcon, InventoryIcon } from '../icons';
 
 const features = [
@@ -37,12 +35,10 @@ const features = [
 ];
 
 const FeaturesSection: React.FC = () => {
-    const sectionRef = useScrollAnimation<HTMLDivElement>();
-
     return (
-        <section id="features" ref={sectionRef} className="py-12 md:py-20 bg-gray-50 dark:bg-gray-800/50">
+        <section id="features" className="py-12 md:py-20 bg-gray-50 dark:bg-gray-800/50">
             <div className="container mx-auto px-4 sm:px-6">
-                <div className="max-w-3xl mx-auto text-center pb-12 md:pb-16">
+                <div className="max-w-3xl mx-auto text-center pb-12 md:pb-16" data-aos="fade-up">
                     <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">Everything You Need to Pilot Your Stock</h2>
                     <p className="text-lg text-gray-600 dark:text-gray-300 mt-4">
                         From intelligent matchmaking to automated alerts, Stock Pilot provides the tools to streamline your business operations.
@@ -50,7 +46,7 @@ const FeaturesSection: React.FC = () => {
                 </div>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {features.map((feature, index) => (
-                        <div key={index} className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300">
+                        <div key={index} className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300" data-aos="fade-up" data-aos-delay={100 * (index % 3)}>
                             <div className="flex items-center mb-4">
                                 <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 dark:bg-indigo-900/50">
                                     {feature.icon}

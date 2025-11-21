@@ -1,6 +1,4 @@
-
 import React from 'react';
-import useScrollAnimation from '../../hooks/useScrollAnimation';
 
 const benefits = [
     {
@@ -22,11 +20,10 @@ const benefits = [
 ];
 
 const BenefitsSection: React.FC = () => {
-    const sectionRef = useScrollAnimation<HTMLDivElement>();
     return (
-        <section id="benefits" ref={sectionRef} className="py-12 md:py-20">
+        <section id="benefits" className="py-12 md:py-20">
             <div className="container mx-auto px-4 sm:px-6">
-                <div className="max-w-3xl mx-auto text-center pb-12 md:pb-16">
+                <div className="max-w-3xl mx-auto text-center pb-12 md:pb-16" data-aos="fade-up">
                     <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">The Ultimate Advantage for Your Business</h2>
                     <p className="text-lg text-gray-600 dark:text-gray-300 mt-4">
                         Stock Pilot isn't just an inventory tool; it's a platform designed to make your business more efficient and profitable.
@@ -35,7 +32,7 @@ const BenefitsSection: React.FC = () => {
 
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {benefits.map((benefit, index) => (
-                        <div key={index} className="flex flex-col p-6 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+                        <div key={index} className="flex flex-col p-6 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg" data-aos="fade-up" data-aos-delay={100 * index}>
                             <h4 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">{benefit.title}</h4>
                             <p className="text-gray-600 dark:text-gray-300 flex-grow">{benefit.description}</p>
                         </div>

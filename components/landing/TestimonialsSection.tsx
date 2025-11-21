@@ -1,6 +1,4 @@
-
 import React from 'react';
-import useScrollAnimation from '../../hooks/useScrollAnimation';
 
 const testimonials = [
     {
@@ -18,16 +16,15 @@ const testimonials = [
 ];
 
 const TestimonialsSection: React.FC = () => {
-    const sectionRef = useScrollAnimation<HTMLDivElement>();
     return (
-        <section id="testimonials" ref={sectionRef} className="py-12 md:py-20 bg-gray-50 dark:bg-gray-800/50">
+        <section id="testimonials" className="py-12 md:py-20 bg-gray-50 dark:bg-gray-800/50">
             <div className="container mx-auto px-4 sm:px-6">
-                <div className="max-w-3xl mx-auto text-center pb-12">
+                <div className="max-w-3xl mx-auto text-center pb-12" data-aos="fade-up">
                     <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">Trusted by Businesses Like Yours</h2>
                 </div>
                 <div className="grid md:grid-cols-2 gap-8">
                     {testimonials.map((testimonial, index) => (
-                        <div key={index} className="p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                        <div key={index} className="p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md" data-aos="fade-up" data-aos-delay={100 * index}>
                             <p className="text-gray-600 dark:text-gray-300 italic mb-4">"{testimonial.quote}"</p>
                             <div className="flex items-center">
                                 <img className="w-12 h-12 rounded-full mr-4" src={testimonial.image} alt={testimonial.name} />

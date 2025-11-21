@@ -1,15 +1,11 @@
-
 import React from 'react';
-import useScrollAnimation from '../../hooks/useScrollAnimation';
 
 const ForSuppliersSection: React.FC = () => {
-    const sectionRef = useScrollAnimation<HTMLDivElement>();
-
     return (
-        <section id="for-suppliers" ref={sectionRef} className="py-12 md:py-20">
+        <section id="for-suppliers" className="py-12 md:py-20 overflow-hidden">
             <div className="container mx-auto px-4 sm:px-6">
                 <div className="md:grid md:grid-cols-12 md:gap-6 items-center">
-                     <div className="max-w-xl md:max-w-none md:w-full mx-auto md:col-span-5 lg:col-span-6 mb-8 md:mb-0" >
+                     <div className="max-w-xl md:max-w-none md:w-full mx-auto md:col-span-5 lg:col-span-6 mb-8 md:mb-0" data-aos="fade-right">
                         <div className="relative">
                            <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl">
                                 <p className="text-gray-500 dark:text-gray-400 text-sm mb-2">Supplier Chat List</p>
@@ -17,7 +13,7 @@ const ForSuppliersSection: React.FC = () => {
                            </div>
                         </div>
                     </div>
-                    <div className="max-w-xl md:max-w-none md:w-full mx-auto md:col-span-7 lg:col-span-6">
+                    <div className="max-w-xl md:max-w-none md:w-full mx-auto md:col-span-7 lg:col-span-6" data-aos="fade-left">
                         <div className="md:pl-4 lg:pl-12 xl:pl-16">
                             <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-3">For Suppliers</h3>
                             <p className="text-xl text-gray-600 dark:text-gray-300 mb-4">Connect directly with a network of sellers actively looking for your products. Expand your reach effortlessly.</p>
