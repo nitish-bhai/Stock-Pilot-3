@@ -1,20 +1,22 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { LiveSession, LiveServerMessage, Modality, Blob as GenaiBlob, FunctionCall } from '@google/genai';
+import { LiveSession, LiveServerMessage, Modality, Blob as GenaiBlob, FunctionCall, Type } from '@google/genai';
 import { INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL } from '../constants';
 import { useAuth } from '../hooks/useAuth';
 import { useInventory } from '../hooks/useInventory';
 import InventoryTable from './InventoryTable';
 import MicButton from './MicButton';
+import CameraCapture from './CameraCapture';
 import { encode, decode, decodeAudioData } from '../utils/audioUtils';
 import { getAi } from '../services/geminiService';
 import { addOrUpdateItem, removeItem } from '../services/inventoryService';
 import { getChatsStream } from '../services/chatService';
 import { getNotificationsStream } from '../services/notificationService';
-import { LogoutIcon, SearchIcon, ChatIcon, BellIcon } from './icons';
+import { LogoutIcon, SearchIcon, ChatIcon, BellIcon, CameraIcon } from './icons';
 import { InventoryItem, Chat, UserProfile, Notification } from '../types';
 import { ChatParams } from '../App';
 import ChatListModal from './ChatListModal';
+import Toast from './Toast';
 
 interface InventoryManagerProps {
     onNavigateToChat: (params: ChatParams) => void;
@@ -27,12 +29,19 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     
     const [isListening, setIsListening] = useState(false);
     const [isGreeting, setIsGreeting] = useState(false);
-    const [statusText, setStatusText] = useState("Tap the mic to manage your stock with Stock Pilot.");
+    const [statusText, setStatusText] = useState("Tap the mic to manage your stock, or use the camera.");
     const [searchTerm, setSearchTerm] = useState('');
     const [isChatModalOpen, setIsChatModalOpen] = useState(false);
     const [totalUnreadChatCount, setTotalUnreadChatCount] = useState(0);
     const [totalUnreadNotificationCount, setTotalUnreadNotificationCount] = useState(0);
     
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
+    const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
+    
+    // State for manual review modal
+    const [reviewItem, setReviewItem] = useState<{name: string, quantity: number, price: number, expiryDate: string} | null>(null);
+
     const [transcript, setTranscript] = useState<{ speaker: 'user' | 'assistant', text: string }[]>([]);
     const transcriptEndRef = useRef<HTMLDivElement>(null);
 
@@ -166,7 +175,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
 
         setIsListening(false);
         setIsGreeting(false);
-        setStatusText("Tap the mic to manage your stock with Stock Pilot.");
+        setStatusText("Tap the mic to manage your stock, or use the camera.");
         setTranscript([]);
 
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -344,6 +353,63 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
         if (isListening || isGreeting) stopSession();
         else startAndGreetSession();
     };
+    
+    const handleImageCapture = async (base64Image: string) => {
+        setIsCameraOpen(false);
+        setIsAnalyzingImage(true);
+        setToastMessage('Analyzing image with Gemini Vision...');
+        
+        try {
+            const ai = getAi();
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: {
+                    parts: [
+                        { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+                        { text: `Analyze this image for an inventory system. Identify the main item, estimate the quantity visible, suggest a realistic market price in INR for one unit, and calculate an expiry date (DD-MM-YYYY) based on the product type (e.g. milk: 2 days, rice: 1 year from today). Today is ${new Date().toLocaleDateString()}. Return ONLY JSON.` }
+                    ]
+                },
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            name: { type: Type.STRING, description: 'Name of the product identified' },
+                            quantity: { type: Type.NUMBER, description: 'Estimated count of items visible' },
+                            price: { type: Type.NUMBER, description: 'Estimated market price in INR' },
+                            expiryDate: { type: Type.STRING, description: 'Expiry date in DD-MM-YYYY format' }
+                        },
+                        required: ['name', 'quantity', 'price', 'expiryDate']
+                    }
+                }
+            });
+
+            const jsonText = response.text;
+            if (jsonText) {
+                const data = JSON.parse(jsonText);
+                setReviewItem(data);
+            } else {
+                setToastMessage('Could not analyze image. Please try again.');
+            }
+
+        } catch (err) {
+            console.error("Image analysis failed:", err);
+            setToastMessage('Failed to analyze image.');
+        } finally {
+            setIsAnalyzingImage(false);
+        }
+    };
+
+    const handleConfirmReview = async () => {
+        if (!user || !reviewItem) return;
+        try {
+            await addOrUpdateItem(user.uid, reviewItem.name, reviewItem.quantity, reviewItem.price, reviewItem.expiryDate);
+            setReviewItem(null);
+            setToastMessage(`Successfully added ${reviewItem.quantity} ${reviewItem.name}!`);
+        } catch (err) {
+            setToastMessage('Failed to save item.');
+        }
+    };
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value);
     const filteredInventory = inventory.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -354,6 +420,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
 
     return (
         <>
+            <Toast message={toastMessage} onClose={() => setToastMessage('')} />
             <main className="container mx-auto p-4 md:p-8">
                 <header className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                     <div>
@@ -369,6 +436,13 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                         <button onClick={() => setIsChatModalOpen(true)} title="Chats" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
                             <ChatIcon className="w-5 h-5" />
                             {totalUnreadChatCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadChatCount}</span>}
+                        </button>
+                         <button 
+                            onClick={() => setIsCameraOpen(true)} 
+                            title="Snap-to-Stock" 
+                            className="p-3 text-white bg-blue-600 rounded-full hover:bg-blue-700 shadow-md transition-all"
+                        >
+                            <CameraIcon className="w-6 h-6" />
                         </button>
                         <MicButton isListening={isListening || isGreeting} onClick={handleMicClick} />
                         <button onClick={logOut} title="Logout" className="p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600"><LogoutIcon className="w-5 h-5" /></button>
@@ -394,7 +468,85 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                     <InventoryTable items={filteredInventory} loading={inventoryLoading} totalItems={totalItems} totalValue={totalValue} onStartChat={() => setIsChatModalOpen(true)} onAddItemClick={handleMicClick} />
                 </div>
             </main>
+            
             {isChatModalOpen && userProfile && <ChatListModal currentUserProfile={userProfile} onClose={() => setIsChatModalOpen(false)} onNavigateToChat={onNavigateToChat} />}
+            {isCameraOpen && <CameraCapture onCapture={handleImageCapture} onClose={() => setIsCameraOpen(false)} />}
+            
+            {isAnalyzingImage && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Analyzing Image...</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Identifying items, counting stock, and checking market prices.</p>
+                    </div>
+                </div>
+            )}
+
+            {reviewItem && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+                        <div className="p-6">
+                            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Review Item</h2>
+                            <p className="text-gray-500 dark:text-gray-400 mb-6">Here's what we found from your image.</p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Product Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={reviewItem.name} 
+                                        onChange={(e) => setReviewItem({...reviewItem, name: e.target.value})}
+                                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Quantity</label>
+                                        <input 
+                                            type="number" 
+                                            value={reviewItem.quantity} 
+                                            onChange={(e) => setReviewItem({...reviewItem, quantity: parseInt(e.target.value)})}
+                                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Est. Price (₹)</label>
+                                        <input 
+                                            type="number" 
+                                            value={reviewItem.price} 
+                                            onChange={(e) => setReviewItem({...reviewItem, price: parseFloat(e.target.value)})}
+                                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expiry Date (DD-MM-YYYY)</label>
+                                    <input 
+                                        type="text" 
+                                        value={reviewItem.expiryDate} 
+                                        onChange={(e) => setReviewItem({...reviewItem, expiryDate: e.target.value})}
+                                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 flex flex-row-reverse gap-2">
+                            <button 
+                                onClick={handleConfirmReview}
+                                className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                            >
+                                Confirm & Add
+                            </button>
+                            <button 
+                                onClick={() => setReviewItem(null)}
+                                className="inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-2 px-4 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 };
