@@ -13,6 +13,8 @@ import { Chat } from './types';
 import { useExpiryScheduler } from './hooks/useExpiryScheduler';
 import NotificationCenter from './components/NotificationCenter';
 import LandingPage from './components/landing/LandingPage';
+import AdminLogin from './components/admin/AdminLogin';
+import AdminDashboard from './components/admin/AdminDashboard';
 
 // Define navigation state types
 export interface ChatParams {
@@ -26,6 +28,10 @@ const AppContent: React.FC = () => {
     const [toastMessage, setToastMessage] = useState('');
     const lastMessageTimestampRef = React.useRef<any>(null);
     const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
+    
+    // Admin States
+    const [showAdminLogin, setShowAdminLogin] = useState(false);
+    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
     // Run the expiry checker in the background when a user is logged in
     useExpiryScheduler(user?.uid);
@@ -65,8 +71,17 @@ const AppContent: React.FC = () => {
         );
     }
 
+    // --- Admin Flow ---
+    if (isAdminAuthenticated) {
+        return <AdminDashboard onLogout={() => { setIsAdminAuthenticated(false); setShowAdminLogin(false); }} />;
+    }
+    if (showAdminLogin) {
+        return <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} onBack={() => setShowAdminLogin(false)} />;
+    }
+    // -----------------
+
     if (!user) {
-        return <LandingPage />;
+        return <LandingPage onAdminClick={() => setShowAdminLogin(true)} />;
     }
     
     if (userProfile && (!userProfile.role || !userProfile.name)) {

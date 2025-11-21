@@ -30,6 +30,8 @@ const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
         { name: 'Benefits', id: 'benefits' },
         { name: 'For Sellers', id: 'for-sellers' },
         { name: 'For Suppliers', id: 'for-suppliers' },
+        { name: 'Pricing', id: 'pricing' }, // Added Pricing
+        { name: 'FAQ', id: 'faq' }, // Added FAQ
     ];
     
     return (

@@ -81,3 +81,34 @@ export interface Notification {
         daysLeft: number;
     };
 }
+
+// --- Site Configuration Types for Admin Panel ---
+
+export interface SiteFeature {
+    title: string;
+    description: string;
+    iconName: 'SmartMatch' | 'Chat' | 'Inventory' | 'Expiry' | 'Secure' | 'Cloud' | 'Camera' | 'Invoice' | 'Analytics';
+}
+
+export interface Testimonial {
+    name: string;
+    role: string;
+    quote: string;
+    image: string;
+}
+
+export interface FAQ {
+    question: string;
+    answer: string;
+}
+
+export interface SiteConfig {
+    hero: {
+        title: string;
+        subtitle: string;
+        imageUrl: string;
+    };
+    features: SiteFeature[];
+    testimonials: Testimonial[];
+    faqs: FAQ[];
+}

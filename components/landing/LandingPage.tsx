@@ -8,12 +8,19 @@ import ForSellersSection from './ForSellersSection';
 import ForSuppliersSection from './ForSuppliersSection';
 import PricingSection from './PricingSection';
 import TestimonialsSection from './TestimonialsSection';
+import FAQSection from './FAQSection';
 import Footer from './Footer';
 import LoginComponent from '../Login';
 import AOS from 'aos';
+import { useSiteContent } from '../../hooks/useSiteContent';
 
-const LandingPage: React.FC = () => {
+interface LandingPageProps {
+    onAdminClick?: () => void;
+}
+
+const LandingPage: React.FC<LandingPageProps> = ({ onAdminClick }) => {
     const [isLoginModalOpen, setLoginModalOpen] = useState(false);
+    const { config, loading } = useSiteContent();
 
     useEffect(() => {
         AOS.init({
@@ -26,19 +33,24 @@ const LandingPage: React.FC = () => {
     const handleOpenLoginModal = () => setLoginModalOpen(true);
     const handleCloseLoginModal = () => setLoginModalOpen(false);
     
+    if (loading && !config) {
+        // Optional loading state if needed, but fetching defaults is fast
+    }
+
     return (
         <div className="bg-white dark:bg-gray-900">
             <Header onLoginClick={handleOpenLoginModal} />
             <main>
-                <HeroSection onGetStartedClick={handleOpenLoginModal} />
-                <FeaturesSection />
+                <HeroSection onGetStartedClick={handleOpenLoginModal} config={config?.hero} />
+                <FeaturesSection features={config?.features} />
                 <BenefitsSection />
                 <ForSellersSection />
                 <ForSuppliersSection />
                 <PricingSection />
-                <TestimonialsSection />
+                <TestimonialsSection testimonials={config?.testimonials} />
+                <FAQSection faqs={config?.faqs} />
             </main>
-            <Footer />
+            <Footer onAdminClick={onAdminClick} />
             <LoginComponent isOpen={isLoginModalOpen} onClose={handleCloseLoginModal} />
         </div>
     );

@@ -1,8 +1,12 @@
 
 import React from 'react';
-import { TwitterIcon, LinkedinIcon, GithubIcon } from '../icons';
+import { TwitterIcon, LinkedinIcon, GithubIcon, LockClosedIcon } from '../icons';
 
-const Footer: React.FC = () => {
+interface FooterProps {
+    onAdminClick?: () => void;
+}
+
+const Footer: React.FC<FooterProps> = ({ onAdminClick }) => {
     return (
         <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
             <div className="container mx-auto px-4 sm:px-6 py-8">
@@ -31,8 +35,17 @@ const Footer: React.FC = () => {
                         &copy; {new Date().getFullYear()} Stock Pilot by SoundSync. All rights reserved.
                     </div>
                 </div>
-                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-4 text-center md:text-left">
-                    <a href="#" className="hover:underline">Privacy Policy</a> &middot; <a href="#" className="hover:underline">Terms of Service</a>
+                 <div className="flex flex-col md:flex-row justify-between items-center mt-4 text-sm text-gray-500 dark:text-gray-400">
+                    <div>
+                        <a href="#" className="hover:underline">Privacy Policy</a> &middot; <a href="#" className="hover:underline">Terms of Service</a>
+                    </div>
+                    <button 
+                        onClick={onAdminClick} 
+                        className="mt-4 md:mt-0 flex items-center gap-1 text-xs opacity-50 hover:opacity-100 transition-opacity"
+                    >
+                        <LockClosedIcon className="w-3 h-3" />
+                        Admin Panel
+                    </button>
                 </div>
             </div>
         </footer>
