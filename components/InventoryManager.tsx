@@ -447,13 +447,61 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
         setIsCameraOpen(true);
     };
     
-    const handleImageCapture = async (base64Image: string) => {
+    const handleImageCapture = async (captureData: string | string[]) => {
         setIsCameraOpen(false);
         setIsAnalyzingImage(true);
-        setToastMessage('Processing image...');
+        setToastMessage('Processing view...');
         
         const isInvoice = cameraMode === 'invoice';
         const isShelfAnalysis = cameraMode === 'shelf-analysis';
+
+        // Handle Array of images (Walkthrough Mode)
+        if (Array.isArray(captureData)) {
+            if (isShelfAnalysis) {
+                // Multi-frame analysis for Shelf Doctor
+                const analysisPrompt = `Act as a retail expert and Visual Merchandiser. I am showing you a VIDEO WALKTHROUGH (sequence of frames) of a shop.
+                 Analyze the *entire* flow visible in these frames to find problems that a single photo would miss.
+                 1. **Global Ghost Spots:** Identify major gaps/empty shelves across the entire section scanned.
+                 2. **Layout Flow:** Are high-margin items hidden? Is the arrangement logical?
+                 3. **Power Move:** Suggest ONE holistic change (e.g., "Swap the top shelf display with the middle one").
+                 4. **Score:** Rate the overall shop presentation (1-10).
+                 
+                 Return purely JSON: { "score": number, "ghostSpots": string[], "misplacedItems": string[], "powerMove": string }`;
+
+                try {
+                    const ai = getAi();
+                    const imageParts = captureData.map(base64 => ({
+                        inlineData: { mimeType: 'image/jpeg', data: base64 }
+                    }));
+                    
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash',
+                        contents: {
+                            parts: [
+                                ...imageParts,
+                                { text: analysisPrompt }
+                            ]
+                        },
+                        config: { responseMimeType: 'application/json' }
+                    });
+                    
+                    if (response.text) {
+                        const report = JSON.parse(response.text);
+                        setShelfReport(report);
+                        setToastMessage("360° Analysis Complete!");
+                    }
+                } catch (err) {
+                    console.error("Walkthrough analysis failed", err);
+                    setToastMessage("Could not analyze walkthrough.");
+                } finally {
+                    setIsAnalyzingImage(false);
+                }
+                return;
+            }
+        }
+
+        // Handle Single Image (Legacy Mode)
+        const base64Image = Array.isArray(captureData) ? captureData[0] : captureData;
 
         if (isShelfAnalysis) {
              const analysisPrompt = `Act as a retail expert and Visual Merchandiser. Analyze this shelf image thoroughly.
@@ -780,7 +828,8 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
             {isCameraOpen && (
                 <CameraCapture 
                     onCapture={handleImageCapture} 
-                    onClose={() => setIsCameraOpen(false)} 
+                    onClose={() => setIsCameraOpen(false)}
+                    mode={cameraMode}
                 />
             )}
 
@@ -788,9 +837,9 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm">
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl flex flex-col items-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                        <p className="text-lg font-semibold text-gray-900 dark:text-white">AI is analyzing your {cameraMode === 'invoice' ? 'bill' : cameraMode === 'shelf-analysis' ? 'shelf' : 'stock'}...</p>
+                        <p className="text-lg font-semibold text-gray-900 dark:text-white">AI is analyzing your {cameraMode === 'invoice' ? 'bill' : cameraMode === 'shelf-analysis' ? 'shelf scan' : 'stock'}...</p>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                            {cameraMode === 'shelf-analysis' ? 'Looking for ghost spots and opportunities.' : 'Identifying items, prices, and expiry dates.'}
+                            {cameraMode === 'shelf-analysis' ? 'Building 360° view from video frames.' : 'Identifying items, prices, and expiry dates.'}
                         </p>
                     </div>
                 </div>
@@ -812,7 +861,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                             <p className="text-purple-100 text-sm">Visual Merchandising AI Report</p>
                         </div>
 
-                        <div className="p-6 space-y-6">
+                        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
                             {/* Score */}
                             <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
                                 <div>
