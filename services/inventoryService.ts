@@ -1,6 +1,6 @@
 
 import { db } from './firebase';
-import { collection, query, onSnapshot, Unsubscribe, addDoc, doc, updateDoc, deleteDoc, where, getDocs, runTransaction, DocumentReference, Timestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, Unsubscribe, addDoc, doc, updateDoc, deleteDoc, where, getDocs, runTransaction, writeBatch, DocumentReference, Timestamp } from 'firebase/firestore';
 import { InventoryItem } from '../types';
 import { deleteNotificationsForItem } from './notificationService';
 
@@ -83,6 +83,29 @@ export const addOrUpdateItem = async (userId: string, itemName: string, quantity
     });
 };
 
+export const updateInventoryItem = async (userId: string, itemId: string, updates: Partial<InventoryItem>): Promise<void> => {
+    const itemRef = doc(db, `users/${userId}/inventory`, itemId);
+    const dataToUpdate = { ...updates };
+    
+    if (dataToUpdate.name) {
+        dataToUpdate.name = dataToUpdate.name.toLowerCase();
+    }
+
+    if (dataToUpdate.expiryDate) {
+        const parts = dataToUpdate.expiryDate.split('-');
+        if (parts.length === 3) {
+             // Format is DD-MM-YYYY
+            const expiry = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            expiry.setHours(23, 59, 59, 999);
+            dataToUpdate.expiryTimestamp = Timestamp.fromDate(expiry);
+            dataToUpdate.expiryStatus = 'none'; // Reset status if date changes
+            dataToUpdate.lastAlertedAt = undefined; // Allow new alerts
+        }
+    }
+    
+    await updateDoc(itemRef, dataToUpdate as any);
+};
+
 export const removeItem = async (userId: string, itemName: string, quantityToRemove: number): Promise<{ success: boolean; message: string }> => {
     const normalizedItemName = itemName.toLowerCase();
     const itemData = await findItemByName(userId, normalizedItemName);
@@ -118,4 +141,20 @@ export const removeItem = async (userId: string, itemName: string, quantityToRem
     }
     
     return { success: transactionResult.success, message: transactionResult.message };
+};
+
+export const deleteItemsBatch = async (userId: string, itemIds: string[]): Promise<void> => {
+    if (!itemIds.length) return;
+    
+    const batch = writeBatch(db);
+    itemIds.forEach(id => {
+        const itemRef = doc(db, `users/${userId}/inventory`, id);
+        batch.delete(itemRef);
+    });
+    
+    await batch.commit();
+    
+    // Cleanup notifications for these items separately
+    // Note: We do this async/parallel to not block the UI
+    itemIds.forEach(id => deleteNotificationsForItem(userId, id));
 };

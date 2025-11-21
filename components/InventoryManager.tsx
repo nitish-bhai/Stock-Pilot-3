@@ -1,18 +1,20 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { LiveSession, LiveServerMessage, Modality, Blob as GenaiBlob, FunctionCall, Type } from '@google/genai';
-import { INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL } from '../constants';
+import { INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL, BULK_ACTION_TOOL } from '../constants';
 import { useAuth } from '../hooks/useAuth';
 import { useInventory } from '../hooks/useInventory';
 import InventoryTable from './InventoryTable';
 import MicButton from './MicButton';
 import CameraCapture from './CameraCapture';
+import EditItemModal from './EditItemModal';
+import BusinessPilot from './BusinessPilot';
 import { encode, decode, decodeAudioData } from '../utils/audioUtils';
 import { getAi } from '../services/geminiService';
-import { addOrUpdateItem, removeItem } from '../services/inventoryService';
+import { addOrUpdateItem, removeItem, updateInventoryItem, deleteItemsBatch } from '../services/inventoryService';
 import { getChatsStream } from '../services/chatService';
 import { getNotificationsStream } from '../services/notificationService';
-import { LogoutIcon, SearchIcon, ChatIcon, BellIcon, CameraIcon } from './icons';
+import { LogoutIcon, SearchIcon, ChatIcon, BellIcon, CameraIcon, XMarkIcon, DocumentTextIcon, SparklesIcon, ShareIcon, PresentationChartLineIcon } from './icons';
 import { InventoryItem, Chat, UserProfile, Notification } from '../types';
 import { ChatParams } from '../App';
 import ChatListModal from './ChatListModal';
@@ -21,6 +23,21 @@ import Toast from './Toast';
 interface InventoryManagerProps {
     onNavigateToChat: (params: ChatParams) => void;
     onOpenNotifications: () => void;
+}
+
+interface DetectedItem {
+    name: string;
+    quantity: number;
+    price: number;
+    expiryDate: string;
+}
+
+// Type for the Shelf Doctor Report
+interface ShelfAnalysisReport {
+    score: number;
+    ghostSpots: string[];
+    misplacedItems: string[];
+    powerMove: string;
 }
 
 const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, onOpenNotifications }) => {
@@ -36,11 +53,36 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     const [totalUnreadNotificationCount, setTotalUnreadNotificationCount] = useState(0);
     
     const [isCameraOpen, setIsCameraOpen] = useState(false);
+    // Added 'shelf-analysis' mode
+    const [cameraMode, setCameraMode] = useState<'item' | 'invoice' | 'shelf-analysis'>('item');
+    
     const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
     
-    // State for manual review modal
-    const [reviewItem, setReviewItem] = useState<{name: string, quantity: number, price: number, expiryDate: string} | null>(null);
+    // State for manual review/edit modals
+    const [reviewItems, setReviewItems] = useState<DetectedItem[]>([]);
+    const [isReviewingInvoice, setIsReviewingInvoice] = useState(false); 
+    const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+
+    // State for Shelf Doctor Report
+    const [shelfReport, setShelfReport] = useState<ShelfAnalysisReport | null>(null);
+    
+    // State for Batch Actions
+    const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+    const [bulkPromoContent, setBulkPromoContent] = useState<string | null>(null);
+    const [isGeneratingBulkPromo, setIsGeneratingBulkPromo] = useState(false);
+
+    // REF for selectedItems to access fresh state inside the Live API closure
+    const selectedItemIdsRef = useRef<Set<string>>(new Set());
+    const inventoryRef = useRef<InventoryItem[]>([]);
+
+    useEffect(() => {
+        selectedItemIdsRef.current = selectedItemIds;
+    }, [selectedItemIds]);
+
+    useEffect(() => {
+        inventoryRef.current = inventory;
+    }, [inventory]);
 
     const [transcript, setTranscript] = useState<{ speaker: 'user' | 'assistant', text: string }[]>([]);
     const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -153,6 +195,46 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
                 result = { success: true, message: "Query acknowledged. Proceed with your answer." };
                 break;
             }
+            case 'performBulkAction': {
+                const { actionType } = fc.args;
+                const currentSelection = selectedItemIdsRef.current;
+                
+                if (actionType === 'deselect') {
+                    setSelectedItemIds(new Set());
+                    result = { success: true, message: "Selection cleared." };
+                } else if (currentSelection.size === 0) {
+                    result = { success: false, message: "You haven't selected any items. Please select items from the list first." };
+                } else {
+                    if (actionType === 'delete') {
+                         try {
+                            await deleteItemsBatch(user.uid, Array.from(currentSelection));
+                            setSelectedItemIds(new Set());
+                            result = { success: true, message: `Deleted ${currentSelection.size} items successfully.` };
+                        } catch (e) {
+                            result = { success: false, message: "Failed to delete selected items." };
+                        }
+                    } else if (actionType === 'promote') {
+                         setIsGeneratingBulkPromo(true);
+                         const selectedItems = inventoryRef.current.filter(i => currentSelection.has(i.id));
+                         const itemNames = selectedItems.map(i => i.name).join(", ");
+                         
+                         const ai = getAi();
+                         const prompt = `Create a compelling "Bundle Deal" WhatsApp promo message for these items: ${itemNames}. 
+                         Suggest a discount (e.g. "Buy all for 15% off"). Use emojis. Make it short and exciting.`;
+
+                         ai.models.generateContent({
+                            model: 'gemini-2.5-flash',
+                            contents: prompt
+                        }).then(res => {
+                            setBulkPromoContent(res.text);
+                            setIsGeneratingBulkPromo(false);
+                        });
+                        
+                        result = { success: true, message: `I'm generating a promotion for your ${currentSelection.size} selected items. Check your screen.` };
+                    }
+                }
+                break;
+            }
         }
 
         session.sendToolResponse({
@@ -175,7 +257,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
 
         setIsListening(false);
         setIsGreeting(false);
-        setStatusText("Tap the mic to manage your stock, or use the camera.");
+        setStatusText(prev => prev.startsWith("Microphone") ? prev : "Tap the mic to manage your stock, or use the camera.");
         setTranscript([]);
 
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -209,9 +291,14 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
        
         try {
             mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Microphone access denied:", error);
-            setStatusText("Microphone access is required.");
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                 setStatusText("Microphone blocked. Tap the lock icon 🔒 in the URL bar to allow access.");
+                 setToastMessage("Permission Denied. Please enable microphone access in your browser settings (tap the Lock icon in the address bar).");
+            } else {
+                 setStatusText("Microphone not found or unavailable.");
+            }
             stopSession();
             return;
         }
@@ -226,6 +313,7 @@ IMPORTANT: You must only respond in English or Hindi. Prefer English.
 - ${needsExpiry ? "For this store type, items may have an expiry date. After getting the price, you MUST ask for the expiry date and you MUST explicitly state the required format is Day-Month-Year (DD-MM-YYYY)." : "For this store type, items DO NOT have an expiry date, so DO NOT ask for one."}
 - To remove an item: Use 'removeItem'.
 - To answer questions: Use 'queryInventory' and then answer based on the provided inventory context.
+- To manage selected items in the UI: Use 'performBulkAction' when the user says "delete selected", "promote selected", or "deselect".
 Keep responses brief and conversational. Current inventory is: ${JSON.stringify(inventory.slice(0, 50))}`;
 
         let currentInput = '';
@@ -238,7 +326,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 responseModalities: [Modality.AUDIO],
                 inputAudioTranscription: {},
                 outputAudioTranscription: {},
-                tools: [{ functionDeclarations: [INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL] }]
+                tools: [{ functionDeclarations: [INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL, BULK_ACTION_TOOL] }]
             },
             callbacks: {
                 onopen: () => {
@@ -353,12 +441,73 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
         if (isListening || isGreeting) stopSession();
         else startAndGreetSession();
     };
+
+    const handleCaptureOpen = (mode: 'item' | 'invoice' | 'shelf-analysis') => {
+        setCameraMode(mode);
+        setIsCameraOpen(true);
+    };
     
     const handleImageCapture = async (base64Image: string) => {
         setIsCameraOpen(false);
         setIsAnalyzingImage(true);
-        setToastMessage('Analyzing image with Gemini Vision...');
+        setToastMessage('Processing image...');
         
+        const isInvoice = cameraMode === 'invoice';
+        const isShelfAnalysis = cameraMode === 'shelf-analysis';
+
+        if (isShelfAnalysis) {
+             const analysisPrompt = `Act as a retail expert and Visual Merchandiser. Analyze this shelf image thoroughly.
+             1. **Ghost Spots:** Identify gaps/empty spaces where products are missing (potential lost revenue).
+             2. **Misplaced Items:** Spot items that look messy or out of place.
+             3. **Power Move:** Suggest ONE high-impact change to increase sales (e.g. "Move high-margin chocolate to eye level").
+             4. **Score:** Rate the shelf presentation from 1-10.
+             
+             Return purely JSON: { "score": number, "ghostSpots": string[], "misplacedItems": string[], "powerMove": string }`;
+             
+             try {
+                const ai = getAi();
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: {
+                        parts: [
+                            { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+                            { text: analysisPrompt }
+                        ]
+                    },
+                    config: { responseMimeType: 'application/json' }
+                });
+                
+                if (response.text) {
+                    const report = JSON.parse(response.text);
+                    setShelfReport(report);
+                    setToastMessage("Shelf Analysis Complete!");
+                }
+             } catch (err) {
+                 console.error("Analysis failed", err);
+                 setToastMessage("Could not analyze shelf.");
+             } finally {
+                 setIsAnalyzingImage(false);
+             }
+             return;
+        }
+
+        setIsReviewingInvoice(isInvoice);
+
+        const snapPrompt = `Analyze this image for an inventory system. Identify ALL distinct types of items visible (e.g. on a shelf, in a pile, or individually). For EACH item type found:
+                        1. Identify the product name (be specific).
+                        2. Estimate the quantity visible (count them).
+                        3. Suggest a realistic market price in INR for one unit.
+                        4. Calculate an expiry date (DD-MM-YYYY) based on the product type (e.g. milk: 2 days, packaged snacks: 6 months, rice: 1 year).
+                        Today is ${new Date().toLocaleDateString()}. Return the result as a JSON ARRAY.`;
+
+        const invoicePrompt = `Analyze this image as a supplier invoice, bill, or receipt. 
+                        Extract the list of items purchased. For each row in the bill:
+                        1. Identify the product name.
+                        2. Extract the quantity.
+                        3. Extract the unit price in INR. If only total is given, calculate unit price.
+                        4. If an expiry date is mentioned for an item, extract it (DD-MM-YYYY). If not, estimate a safe expiry based on the product type (e.g. Milk=2days, Rice=1yr).
+                        Today is ${new Date().toLocaleDateString()}. Return the result as a JSON ARRAY.`;
+
         try {
             const ai = getAi();
             const response = await ai.models.generateContent({
@@ -366,20 +515,23 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 contents: {
                     parts: [
                         { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                        { text: `Analyze this image for an inventory system. Identify the main item, estimate the quantity visible, suggest a realistic market price in INR for one unit, and calculate an expiry date (DD-MM-YYYY) based on the product type (e.g. milk: 2 days, rice: 1 year from today). Today is ${new Date().toLocaleDateString()}. Return ONLY JSON.` }
+                        { text: isInvoice ? invoicePrompt : snapPrompt }
                     ]
                 },
                 config: {
                     responseMimeType: 'application/json',
                     responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            name: { type: Type.STRING, description: 'Name of the product identified' },
-                            quantity: { type: Type.NUMBER, description: 'Estimated count of items visible' },
-                            price: { type: Type.NUMBER, description: 'Estimated market price in INR' },
-                            expiryDate: { type: Type.STRING, description: 'Expiry date in DD-MM-YYYY format' }
-                        },
-                        required: ['name', 'quantity', 'price', 'expiryDate']
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                name: { type: Type.STRING, description: 'Name of the product identified' },
+                                quantity: { type: Type.NUMBER, description: 'Count/Quantity' },
+                                price: { type: Type.NUMBER, description: 'Price per unit in INR' },
+                                expiryDate: { type: Type.STRING, description: 'Expiry date in DD-MM-YYYY format' }
+                            },
+                            required: ['name', 'quantity', 'price', 'expiryDate']
+                        }
                     }
                 }
             });
@@ -387,7 +539,11 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
             const jsonText = response.text;
             if (jsonText) {
                 const data = JSON.parse(jsonText);
-                setReviewItem(data);
+                const items = Array.isArray(data) ? data : [data];
+                setReviewItems(items);
+                if (items.length === 0) {
+                    setToastMessage('No items detected. Please try again.');
+                }
             } else {
                 setToastMessage('Could not analyze image. Please try again.');
             }
@@ -400,155 +556,470 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
         }
     };
 
+    const updateReviewItem = (index: number, field: keyof DetectedItem, value: any) => {
+        const newItems = [...reviewItems];
+        newItems[index] = { ...newItems[index], [field]: value };
+        setReviewItems(newItems);
+    };
+
+    const removeReviewItem = (index: number) => {
+        const newItems = reviewItems.filter((_, i) => i !== index);
+        setReviewItems(newItems);
+    };
+
     const handleConfirmReview = async () => {
-        if (!user || !reviewItem) return;
+        if (!user || reviewItems.length === 0) return;
         try {
-            await addOrUpdateItem(user.uid, reviewItem.name, reviewItem.quantity, reviewItem.price, reviewItem.expiryDate);
-            setReviewItem(null);
-            setToastMessage(`Successfully added ${reviewItem.quantity} ${reviewItem.name}!`);
+            let count = 0;
+            for (const item of reviewItems) {
+                await addOrUpdateItem(user.uid, item.name, item.quantity, item.price, item.expiryDate);
+                count++;
+            }
+            setReviewItems([]);
+            setToastMessage(`Successfully added ${count} items!`);
         } catch (err) {
-            setToastMessage('Failed to save item.');
+            setToastMessage('Failed to save items.');
+        }
+    };
+    
+    const handleUpdateItem = async (updatedItem: InventoryItem) => {
+        if (!user) return;
+        try {
+            await updateInventoryItem(user.uid, updatedItem.id, {
+                name: updatedItem.name,
+                quantity: updatedItem.quantity,
+                price: updatedItem.price,
+                expiryDate: updatedItem.expiryDate
+            });
+            setEditingItem(null);
+            setToastMessage(`Updated ${updatedItem.name} successfully.`);
+        } catch (error) {
+            console.error("Update failed", error);
+            setToastMessage("Failed to update item.");
         }
     };
 
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value);
-    const filteredInventory = inventory.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
-    const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.price, 0);
-    
-    useEffect(() => () => stopSession(), [stopSession]);
+    // Batch Actions Logic
+    const handleBulkDelete = async () => {
+        if (!user || selectedItemIds.size === 0) return;
+        if (window.confirm(`Are you sure you want to delete ${selectedItemIds.size} items?`)) {
+            try {
+                await deleteItemsBatch(user.uid, Array.from(selectedItemIds));
+                setSelectedItemIds(new Set());
+                setToastMessage('Selected items deleted.');
+            } catch (error) {
+                console.error("Batch delete failed", error);
+                setToastMessage('Failed to delete items.');
+            }
+        }
+    };
+
+    const handleBulkPromo = async () => {
+        if (selectedItemIds.size === 0) return;
+        setIsGeneratingBulkPromo(true);
+        
+        const selectedItems = inventory.filter(i => selectedItemIds.has(i.id));
+        const itemNames = selectedItems.map(i => i.name).join(", ");
+        
+        const ai = getAi();
+        const prompt = `Create a compelling "Bundle Deal" WhatsApp promo message for these items: ${itemNames}. 
+        Suggest a discount (e.g. "Buy all for 15% off"). Use emojis. Make it short and exciting.`;
+
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt
+            });
+            setBulkPromoContent(response.text);
+        } catch (error) {
+            setToastMessage("Failed to generate promo.");
+        } finally {
+            setIsGeneratingBulkPromo(false);
+        }
+    };
+
+    const filteredInventory = inventory.filter(item =>
+        item.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const totalItems = inventory.reduce((acc, item) => acc + item.quantity, 0);
+    const totalValue = inventory.reduce((acc, item) => acc + (item.quantity * item.price), 0);
 
     return (
-        <>
+        <main className="container mx-auto p-4 md:p-8 pb-24">
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
-            <main className="container mx-auto p-4 md:p-8">
-                <header className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                    <div>
-                        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white text-center md:text-left">Stock Pilot</h1>
-                        <p className="text-gray-500 dark:text-gray-400 text-center md:text-left">by SoundSync | Welcome, {userProfile?.name}</p>
+            
+            <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                <div>
+                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+                    <p className="text-gray-500 dark:text-gray-400">Welcome, {userProfile?.name}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button onClick={onOpenNotifications} title="Notifications" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
+                         <BellIcon className="w-5 h-5" />
+                         {totalUnreadNotificationCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadNotificationCount}</span>}
+                    </button>
+                    <button onClick={() => setIsChatModalOpen(true)} title="Chats" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
+                        <ChatIcon className="w-5 h-5" />
+                        {totalUnreadChatCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadChatCount}</span>}
+                    </button>
+                    <button onClick={logOut} title="Logout" className="p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
+                        <LogoutIcon className="w-5 h-5" />
+                    </button>
+                </div>
+            </header>
+
+            {/* Business Pilot Section */}
+            <BusinessPilot inventory={inventory} />
+
+            <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
+                    <div className="relative z-10">
+                         <h2 className="text-lg font-semibold mb-1">Voice Assistant</h2>
+                         <p className="text-indigo-100 text-sm h-12 overflow-hidden">{statusText}</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="relative"><SearchIcon className="absolute inset-y-0 left-3 w-5 h-5 text-gray-400" /><input type="text" placeholder="Search..." value={searchTerm} onChange={handleSearchChange} className="w-full md:w-40 bg-gray-200 dark:bg-gray-700 rounded-md py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
-                        <button onClick={() => onOpenNotifications()} title="Notifications" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
-                            <BellIcon className="w-5 h-5" />
-                            {totalUnreadNotificationCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadNotificationCount}</span>}
-                        </button>
-                        <button onClick={() => setIsChatModalOpen(true)} title="Chats" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
-                            <ChatIcon className="w-5 h-5" />
-                            {totalUnreadChatCount > 0 && <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white ring-2 ring-white dark:ring-gray-700">{totalUnreadChatCount}</span>}
-                        </button>
-                         <button 
-                            onClick={() => setIsCameraOpen(true)} 
-                            title="Snap-to-Stock" 
-                            className="p-3 text-white bg-blue-600 rounded-full hover:bg-blue-700 shadow-md transition-all"
+                    <div className="absolute bottom-4 right-4 z-20">
+                         <MicButton isListening={isListening || isGreeting} onClick={handleMicClick} />
+                    </div>
+                     {/* Visualization Circles */}
+                    {(isListening || isGreeting) && (
+                        <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center pointer-events-none">
+                            <span className="animate-ping absolute inline-flex h-32 w-32 rounded-full bg-white opacity-10"></span>
+                            <span className="animate-ping absolute inline-flex h-48 w-48 rounded-full bg-white opacity-5 delay-100"></span>
+                        </div>
+                    )}
+                </div>
+
+                 <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Visual AI Tools</h2>
+                    <div className="grid grid-cols-3 gap-2">
+                        <button 
+                            onClick={() => handleCaptureOpen('item')}
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group"
                         >
-                            <CameraIcon className="w-6 h-6" />
+                             <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-full mb-1 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800">
+                                <CameraIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                             </div>
+                             <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center">Snap Item</span>
                         </button>
-                        <MicButton isListening={isListening || isGreeting} onClick={handleMicClick} />
-                        <button onClick={logOut} title="Logout" className="p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600"><LogoutIcon className="w-5 h-5" /></button>
+                        <button 
+                            onClick={() => handleCaptureOpen('invoice')}
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group"
+                        >
+                             <div className="p-2 bg-green-100 dark:bg-green-900 rounded-full mb-1 group-hover:bg-green-200 dark:group-hover:bg-green-800">
+                                <DocumentTextIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
+                             </div>
+                             <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center">Scan Bill</span>
+                        </button>
+                        <button 
+                            onClick={() => handleCaptureOpen('shelf-analysis')}
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group"
+                        >
+                             <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-full mb-1 group-hover:bg-purple-200 dark:group-hover:bg-purple-800">
+                                <PresentationChartLineIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                             </div>
+                             <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center">Shelf Doctor</span>
+                        </button>
                     </div>
-                </header>
-                <div className="text-center mb-4"><p className="text-gray-600 dark:text-gray-300 h-5">{statusText}</p></div>
-                 
-                 {transcript.length > 0 && (
-                    <div className="mb-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 h-32 overflow-y-auto shadow-inner">
-                        {transcript.map((entry, index) => (
-                            <p key={index} className="text-sm text-gray-700 dark:text-gray-300">
-                                <span className={`font-bold ${entry.speaker === 'user' ? 'text-blue-600 dark:text-blue-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
-                                    {entry.speaker === 'user' ? 'You: ' : 'Assistant: '}
-                                </span>
-                                {entry.text}
-                            </p>
-                        ))}
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md border border-gray-200 dark:border-gray-700 hidden lg:block">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Transcript</h2>
+                    <div className="h-32 overflow-y-auto text-sm space-y-2 custom-scrollbar">
+                        {transcript.length === 0 ? (
+                            <p className="text-gray-400 italic">Conversation will appear here...</p>
+                        ) : (
+                            transcript.map((entry, i) => (
+                                <div key={i} className={entry.speaker === 'user' ? 'text-right' : 'text-left'}>
+                                    <span className={`inline-block px-3 py-1 rounded-lg ${entry.speaker === 'user' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-200' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'}`}>
+                                        {entry.text}
+                                    </span>
+                                </div>
+                            ))
+                        )}
                          <div ref={transcriptEndRef} />
                     </div>
-                )}
-
-                <div className="mb-8">
-                    <InventoryTable items={filteredInventory} loading={inventoryLoading} totalItems={totalItems} totalValue={totalValue} onStartChat={() => setIsChatModalOpen(true)} onAddItemClick={handleMicClick} />
                 </div>
-            </main>
-            
-            {isChatModalOpen && userProfile && <ChatListModal currentUserProfile={userProfile} onClose={() => setIsChatModalOpen(false)} onNavigateToChat={onNavigateToChat} />}
-            {isCameraOpen && <CameraCapture onCapture={handleImageCapture} onClose={() => setIsCameraOpen(false)} />}
-            
+            </section>
+
+            {/* Search and Filter */}
+            <div className="flex items-center mb-6 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 max-w-md">
+                <SearchIcon className="w-5 h-5 text-gray-400 ml-2" />
+                <input
+                    type="text"
+                    placeholder="Search inventory..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white ml-2 placeholder-gray-400"
+                />
+            </div>
+
+            <InventoryTable 
+                items={filteredInventory} 
+                loading={inventoryLoading}
+                totalItems={totalItems}
+                totalValue={totalValue}
+                onStartChat={() => setIsChatModalOpen(true)}
+                onAddItemClick={() => startAndGreetSession()}
+                onEdit={(item) => setEditingItem(item)}
+                selectedItems={selectedItemIds}
+                onSelectionChange={setSelectedItemIds}
+                onBulkDelete={handleBulkDelete}
+                onBulkPromo={handleBulkPromo}
+            />
+
+            {/* Modals */}
+            {isChatModalOpen && userProfile && (
+                <ChatListModal 
+                    currentUserProfile={userProfile} 
+                    onClose={() => setIsChatModalOpen(false)} 
+                    onNavigateToChat={onNavigateToChat}
+                />
+            )}
+
+            {isCameraOpen && (
+                <CameraCapture 
+                    onCapture={handleImageCapture} 
+                    onClose={() => setIsCameraOpen(false)} 
+                />
+            )}
+
             {isAnalyzingImage && (
                 <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Analyzing Image...</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Identifying items, counting stock, and checking market prices.</p>
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl flex flex-col items-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+                        <p className="text-lg font-semibold text-gray-900 dark:text-white">AI is analyzing your {cameraMode === 'invoice' ? 'bill' : cameraMode === 'shelf-analysis' ? 'shelf' : 'stock'}...</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                            {cameraMode === 'shelf-analysis' ? 'Looking for ghost spots and opportunities.' : 'Identifying items, prices, and expiry dates.'}
+                        </p>
                     </div>
                 </div>
             )}
 
-            {reviewItem && (
-                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-                        <div className="p-6">
-                            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Review Item</h2>
-                            <p className="text-gray-500 dark:text-gray-400 mb-6">Here's what we found from your image.</p>
-                            
-                            <div className="space-y-4">
+            {/* Shelf Doctor Report Modal */}
+            {shelfReport && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm p-4 animate-fade-in-down">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden relative">
+                        <button onClick={() => setShelfReport(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                            <XMarkIcon className="w-6 h-6" />
+                        </button>
+                        
+                        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
+                            <div className="flex items-center gap-3 mb-2">
+                                <PresentationChartLineIcon className="w-8 h-8" />
+                                <h2 className="text-2xl font-bold">Shelf Diagnosis</h2>
+                            </div>
+                            <p className="text-purple-100 text-sm">Visual Merchandising AI Report</p>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* Score */}
+                            <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Product Name</label>
-                                    <input 
-                                        type="text" 
-                                        value={reviewItem.name} 
-                                        onChange={(e) => setReviewItem({...reviewItem, name: e.target.value})}
-                                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
-                                    />
+                                    <p className="text-sm font-bold text-gray-500 uppercase">Merchandising Score</p>
+                                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{shelfReport.score}/10</p>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Quantity</label>
-                                        <input 
-                                            type="number" 
-                                            value={reviewItem.quantity} 
-                                            onChange={(e) => setReviewItem({...reviewItem, quantity: parseInt(e.target.value)})}
-                                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Est. Price (₹)</label>
-                                        <input 
-                                            type="number" 
-                                            value={reviewItem.price} 
-                                            onChange={(e) => setReviewItem({...reviewItem, price: parseFloat(e.target.value)})}
-                                            className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expiry Date (DD-MM-YYYY)</label>
-                                    <input 
-                                        type="text" 
-                                        value={reviewItem.expiryDate} 
-                                        onChange={(e) => setReviewItem({...reviewItem, expiryDate: e.target.value})}
-                                        className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
-                                    />
+                                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white 
+                                    ${shelfReport.score >= 8 ? 'bg-green-500' : shelfReport.score >= 5 ? 'bg-yellow-500' : 'bg-red-500'}`}>
+                                    {shelfReport.score}
                                 </div>
                             </div>
-                        </div>
-                        <div className="bg-gray-50 dark:bg-gray-700 px-6 py-4 flex flex-row-reverse gap-2">
+
+                            {/* Power Move */}
+                            <div className="border-l-4 border-purple-500 pl-4">
+                                <h4 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <SparklesIcon className="w-5 h-5 text-purple-500" />
+                                    AI Power Move
+                                </h4>
+                                <p className="text-gray-700 dark:text-gray-300 mt-1">{shelfReport.powerMove}</p>
+                            </div>
+
+                            {/* Issues */}
+                            <div className="grid grid-cols-1 gap-4">
+                                {shelfReport.ghostSpots.length > 0 && (
+                                    <div>
+                                        <p className="text-sm font-bold text-red-500 uppercase mb-1">Ghost Spots (Lost Sales)</p>
+                                        <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400">
+                                            {shelfReport.ghostSpots.map((spot, i) => <li key={i}>{spot}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                                {shelfReport.misplacedItems.length > 0 && (
+                                    <div>
+                                        <p className="text-sm font-bold text-orange-500 uppercase mb-1">Needs Attention</p>
+                                        <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400">
+                                            {shelfReport.misplacedItems.map((item, i) => <li key={i}>{item}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+
                             <button 
-                                onClick={handleConfirmReview}
-                                className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                onClick={() => setShelfReport(null)}
+                                className="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg font-bold transition-colors"
                             >
-                                Confirm & Add
+                                Close Report
                             </button>
-                            <button 
-                                onClick={() => setReviewItem(null)}
-                                className="inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-2 px-4 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Review Items Modal (Batch Add) */}
+            {reviewItems.length > 0 && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+                        <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                                    Review {isReviewingInvoice ? 'Invoice' : 'Detected'} Items
+                                </h2>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Please verify the AI's findings before adding.</p>
+                            </div>
+                            <button onClick={() => setReviewItems([])} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                {reviewItems.map((item, idx) => (
+                                    <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600 relative group">
+                                        <button 
+                                            onClick={() => removeReviewItem(idx)}
+                                            className="absolute top-2 right-2 p-1 bg-red-100 dark:bg-red-900/50 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Remove item"
+                                        >
+                                            <XMarkIcon className="w-4 h-4" />
+                                        </button>
+
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-500 uppercase">Product</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={item.name}
+                                                    onChange={(e) => updateReviewItem(idx, 'name', e.target.value)}
+                                                    className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-indigo-500 outline-none text-sm font-medium text-gray-900 dark:text-white"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <div className="flex-1">
+                                                    <label className="text-xs font-bold text-gray-500 uppercase">Qty</label>
+                                                    <input 
+                                                        type="number" 
+                                                        value={item.quantity}
+                                                        onChange={(e) => updateReviewItem(idx, 'quantity', parseInt(e.target.value) || 0)}
+                                                        className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-indigo-500 outline-none text-sm text-gray-900 dark:text-white"
+                                                    />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <label className="text-xs font-bold text-gray-500 uppercase">Price (₹)</label>
+                                                    <input 
+                                                        type="number" 
+                                                        value={item.price}
+                                                        onChange={(e) => updateReviewItem(idx, 'price', parseFloat(e.target.value) || 0)}
+                                                        className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-indigo-500 outline-none text-sm text-gray-900 dark:text-white"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-gray-500 uppercase">Expiry</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={item.expiryDate}
+                                                    onChange={(e) => updateReviewItem(idx, 'expiryDate', e.target.value)}
+                                                    placeholder="DD-MM-YYYY"
+                                                    className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-indigo-500 outline-none text-sm text-gray-900 dark:text-white"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-end gap-3">
+                             <button 
+                                onClick={() => setReviewItems([])}
+                                className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg font-medium"
                             >
                                 Cancel
                             </button>
+                            <button 
+                                onClick={handleConfirmReview}
+                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-md transition-colors flex items-center gap-2"
+                            >
+                                <CheckIcon className="w-5 h-5" />
+                                Confirm & Add All ({reviewItems.length})
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
-        </>
+            
+            {/* Edit Item Modal */}
+            {editingItem && (
+                <EditItemModal 
+                    item={editingItem} 
+                    onClose={() => setEditingItem(null)} 
+                    onSave={handleUpdateItem}
+                />
+            )}
+
+            {/* Bulk Promo Modal */}
+            {bulkPromoContent && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-sm w-full p-6 animate-fade-in-down">
+                        <div className="text-center mb-4">
+                            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <SparklesIcon className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Bundle Deal Ready!</h3>
+                        </div>
+                        
+                        <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mb-6 text-gray-800 dark:text-gray-200 font-medium italic text-center relative">
+                            "{bulkPromoContent}"
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setBulkPromoContent(null)}
+                                className="flex-1 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg font-medium"
+                            >
+                                Close
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    navigator.clipboard.writeText(bulkPromoContent);
+                                    alert("Copied to clipboard!");
+                                }}
+                                className="flex-1 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold shadow-md flex items-center justify-center gap-2"
+                            >
+                                <ShareIcon className="w-4 h-4" />
+                                Copy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+             {isGeneratingBulkPromo && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl flex flex-col items-center">
+                        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4"></div>
+                        <p className="text-gray-900 dark:text-white font-medium">Crafting bundle offer...</p>
+                    </div>
+                </div>
+            )}
+
+        </main>
     );
 };
+
+const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
+    </svg>
+);
 
 export default InventoryManager;

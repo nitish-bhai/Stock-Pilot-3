@@ -112,6 +112,60 @@ export const sendMessage = async (chatId: string, senderProfile: UserProfile, te
 };
 
 /**
+ * Broadcasts a message to multiple chats.
+ */
+export const broadcastMessage = async (chatIds: string[], senderProfile: UserProfile, text: string): Promise<{ success: boolean; count: number }> => {
+    if (chatIds.length === 0) return { success: true, count: 0 };
+
+    const batch = writeBatch(db);
+    let operationCount = 0;
+
+    for (const chatId of chatIds) {
+        const messagesRef = collection(db, `chats/${chatId}/messages`);
+        const chatRef = doc(db, 'chats', chatId);
+        
+        // We need to know the recipient ID to update unread count.
+        // For efficiency in broadcast, we'll assume we can't fetch every chat doc.
+        // However, we can use a trick: get the ID from the participants field in the chat document.
+        // BUT, strictly for batch writes, we can't read. 
+        // So we will perform a read first (Promise.all) which is okay for reasonable numbers (<50).
+        // If scaling, we'd move this to a Cloud Function.
+        
+        const chatSnap = await getDoc(chatRef);
+        if (!chatSnap.exists()) continue;
+        
+        const participants = chatSnap.data().participants as string[];
+        const recipientId = participants.find(p => p !== senderProfile.uid);
+        
+        if (!recipientId) continue;
+
+        const newMessage: Omit<Message, 'id'> = {
+            chatId,
+            senderId: senderProfile.uid,
+            senderName: senderProfile.name,
+            text,
+            timestamp: serverTimestamp(),
+            isRead: false,
+            deliveryStatus: 'sent',
+        };
+
+        batch.set(doc(messagesRef), newMessage);
+        batch.update(chatRef, {
+            lastMessageText: `📢 ${text}`,
+            lastMessageTimestamp: serverTimestamp(),
+            [`unreadCount.${recipientId}`]: increment(1)
+        });
+        operationCount++;
+    }
+
+    if (operationCount > 0) {
+        await batch.commit();
+    }
+
+    return { success: true, count: operationCount };
+};
+
+/**
  * Updates the status of multiple messages to 'delivered'.
  * @param chatId The ID of the chat.
  * @param messageIds An array of message IDs to update.

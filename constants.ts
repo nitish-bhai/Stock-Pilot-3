@@ -75,3 +75,19 @@ export const QUERY_INVENTORY_TOOL: FunctionDeclaration = {
         required: ['query'],
     }
 };
+
+export const BULK_ACTION_TOOL: FunctionDeclaration = {
+    name: 'performBulkAction',
+    description: 'Performs actions on the currently selected items in the inventory table. Use this when the user says "delete selected", "promote selected", "add selected to deal", or "clear selection".',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            actionType: { 
+                type: Type.STRING, 
+                description: 'The action to perform.', 
+                enum: ['delete', 'promote', 'deselect'] 
+            }
+        },
+        required: ['actionType'],
+    }
+};
