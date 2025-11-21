@@ -1,7 +1,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc, increment } from "firebase/firestore";
 import { UserProfile } from "../types";
 
 const firebaseConfig = {
@@ -32,10 +32,27 @@ export const getUserProfile = async (uid:string): Promise<UserProfile | null> =>
     const userDocRef = doc(db, 'users', uid);
     const docSnap = await getDoc(userDocRef);
     if (docSnap.exists()) {
-        return docSnap.data() as UserProfile;
+        const data = docSnap.data();
+        // Ensure usage object exists if older record
+        if (!data.usage) {
+            data.usage = { aiScans: 0, promosGenerated: 0, inventoryCount: 0 };
+        }
+        return data as UserProfile;
     }
     return null;
-}
+};
+
+/**
+ * Increments the usage counter for a specific feature.
+ * @param uid The user's ID.
+ * @param field The usage field to increment (e.g., 'aiScans').
+ */
+export const incrementUserUsage = async (uid: string, field: 'aiScans' | 'promosGenerated'): Promise<void> => {
+    const userDocRef = doc(db, 'users', uid);
+    await updateDoc(userDocRef, {
+        [`usage.${field}`]: increment(1)
+    });
+};
 
 /**
  * Finds users of a specific role who are associated with any of the provided categories.

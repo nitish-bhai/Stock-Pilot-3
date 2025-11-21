@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { LiveSession, LiveServerMessage, Modality, Blob as GenaiBlob, FunctionCall, Type } from '@google/genai';
-import { INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL, BULK_ACTION_TOOL } from '../constants';
+import { INITIATE_ADD_ITEM_TOOL, PROVIDE_ITEM_QUANTITY_TOOL, PROVIDE_ITEM_PRICE_TOOL, REMOVE_ITEM_TOOL, QUERY_INVENTORY_TOOL, PROVIDE_ITEM_EXPIRY_DATE_TOOL, BULK_ACTION_TOOL, PLAN_LIMITS } from '../constants';
 import { useAuth } from '../hooks/useAuth';
 import { useInventory } from '../hooks/useInventory';
 import InventoryTable from './InventoryTable';
@@ -15,6 +15,7 @@ import { getAi } from '../services/geminiService';
 import { addOrUpdateItem, removeItem, updateInventoryItem, deleteItemsBatch } from '../services/inventoryService';
 import { getChatsStream } from '../services/chatService';
 import { getNotificationsStream } from '../services/notificationService';
+import { incrementUserUsage } from '../services/firebase';
 import { LogoutIcon, SearchIcon, ChatIcon, BellIcon, CameraIcon, XMarkIcon, DocumentTextIcon, SparklesIcon, ShareIcon, PresentationChartLineIcon } from './icons';
 import { InventoryItem, Chat, UserProfile, Notification } from '../types';
 import { ChatParams } from '../App';
@@ -42,7 +43,7 @@ interface ShelfAnalysisReport {
 }
 
 const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, onOpenNotifications }) => {
-    const { user, userProfile, logOut } = useAuth();
+    const { user, userProfile, logOut, updateUserProfileState } = useAuth();
     const { inventory, loading: inventoryLoading } = useInventory();
     
     const [isListening, setIsListening] = useState(false);
@@ -125,11 +126,32 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
         transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [transcript]);
 
-    // --- Premium Feature Gating Helper ---
-    const checkProFeature = (featureName: string) => {
-        if (userProfile?.plan === 'pro') return true;
-        setShowSubscriptionModal(true);
-        return false;
+    // --- Usage Limit Checker ---
+    const checkUsageLimit = (feature: 'aiScans' | 'promosGenerated' | 'inventoryCount', currentCount: number): boolean => {
+        if (!userProfile) return false;
+        if (userProfile.plan === 'pro') return true; // Pro has no limits
+
+        const limit = PLAN_LIMITS.free[feature === 'inventoryCount' ? 'maxInventoryItems' : feature === 'aiScans' ? 'maxAiScans' : 'maxPromos'];
+        
+        if (currentCount >= limit) {
+            setShowSubscriptionModal(true);
+            return false;
+        }
+        return true;
+    };
+
+    const handleIncrementUsage = async (feature: 'aiScans' | 'promosGenerated') => {
+        if (!user || !userProfile) return;
+        // Increment in local state for immediate UI update
+        const newCount = (userProfile.usage?.[feature] || 0) + 1;
+        updateUserProfileState({ 
+            usage: { 
+                ...userProfile.usage, 
+                [feature]: newCount 
+            } 
+        });
+        // Increment in DB
+        await incrementUserUsage(user.uid, feature);
     };
 
     const handleToolCall = useCallback(async (fc: FunctionCall, session: LiveSession): Promise<void> => {
@@ -169,12 +191,17 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
                     
                     const needsExpiry = userCategories.some(cat => ['medical', 'grocery', 'sweets'].includes(cat));
 
-                    if (needsExpiry) {
-                        awaitingExpiryInfoRef.current = { itemName, quantity, price };
-                        result = { success: true, message: `The price is set. Now, what is the expiry date? Please tell me in Day-Month-Year format.` };
+                    // Check Inventory Limit before adding
+                    if (!checkUsageLimit('inventoryCount', inventoryRef.current.length)) {
+                         result = { success: false, message: "You've reached the free inventory limit. Please upgrade to add more items." };
                     } else {
-                        await addOrUpdateItem(user.uid, itemName, quantity, price);
-                        result = { success: true, message: `Great, I've added ${quantity} ${itemName} to your inventory.` };
+                        if (needsExpiry) {
+                            awaitingExpiryInfoRef.current = { itemName, quantity, price };
+                            result = { success: true, message: `The price is set. Now, what is the expiry date? Please tell me in Day-Month-Year format.` };
+                        } else {
+                            await addOrUpdateItem(user.uid, itemName, quantity, price);
+                            result = { success: true, message: `Great, I've added ${quantity} ${itemName} to your inventory.` };
+                        }
                     }
                 } else {
                     result = { success: false, message: "I'm sorry, I don't know which item you're providing the price for. Let's start over." };
@@ -188,9 +215,14 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
                     if (!/^\d{2}-\d{2}-\d{4}$/.test(expiryDate)) {
                         result = { success: false, message: "That doesn't look right. Please provide the date in Day-Month-Year format, for example, 31-12-2025." };
                     } else {
-                        await addOrUpdateItem(user.uid, itemName, quantity, price, expiryDate);
-                        result = { success: true, message: `Got it. I've added ${quantity} ${itemName} with an expiry date of ${expiryDate}.` };
-                        awaitingExpiryInfoRef.current = null;
+                         // Check Inventory Limit again just in case
+                        if (!checkUsageLimit('inventoryCount', inventoryRef.current.length)) {
+                            result = { success: false, message: "You've reached the free inventory limit. Please upgrade." };
+                        } else {
+                            await addOrUpdateItem(user.uid, itemName, quantity, price, expiryDate);
+                            result = { success: true, message: `Got it. I've added ${quantity} ${itemName} with an expiry date of ${expiryDate}.` };
+                            awaitingExpiryInfoRef.current = null;
+                        }
                     }
                 } else {
                     result = { success: false, message: "I'm sorry, I don't know which item you're providing an expiry for." };
@@ -225,10 +257,10 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
                             result = { success: false, message: "Failed to delete selected items." };
                         }
                     } else if (actionType === 'promote') {
-                         // Gated Feature
-                         if (userProfile.plan !== 'pro') {
-                             result = { success: false, message: "The promotion feature is available in Vyapar Pro. Please upgrade on your dashboard." };
-                             // We can't open the modal from here easily without a signal, but the voice response handles it.
+                         // Usage Check for Promos
+                         const currentPromos = userProfile.usage?.promosGenerated || 0;
+                         if (!checkUsageLimit('promosGenerated', currentPromos)) {
+                             result = { success: false, message: "You've reached your free promo limit for this month. Please upgrade." };
                          } else {
                              setIsGeneratingBulkPromo(true);
                              const selectedItems = inventoryRef.current.filter(i => currentSelection.has(i.id));
@@ -244,6 +276,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
                             }).then(res => {
                                 setBulkPromoContent(res.text);
                                 setIsGeneratingBulkPromo(false);
+                                handleIncrementUsage('promosGenerated');
                             });
                             
                             result = { success: true, message: `I'm generating a promotion for your ${currentSelection.size} selected items. Check your screen.` };
@@ -460,8 +493,12 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
     };
 
     const handleCaptureOpen = (mode: 'item' | 'invoice' | 'shelf-analysis') => {
-        // GATE: Only allow basic 'item' snap for free plan. Invoice and Shelf are Pro.
-        if (mode !== 'item' && !checkProFeature(mode)) return;
+        // Check usage limit for AI Scans (Invoice & Shelf Analysis are heavy operations)
+        // Basic item snap also counts in this model as "AI usage"
+        const currentUsage = userProfile?.usage?.aiScans || 0;
+        if (mode !== 'item' && !checkUsageLimit('aiScans', currentUsage)) {
+            return;
+        }
         
         setCameraMode(mode);
         setIsCameraOpen(true);
@@ -474,6 +511,9 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
         
         const isInvoice = cameraMode === 'invoice';
         const isShelfAnalysis = cameraMode === 'shelf-analysis';
+
+        // Increment Usage for Scan
+        await handleIncrementUsage('aiScans');
 
         // Handle Array of images (Walkthrough Mode)
         if (Array.isArray(captureData)) {
@@ -683,7 +723,12 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
     };
 
     const handleBulkPromo = async () => {
-        if (!checkProFeature('bulkPromo')) return;
+        // Usage Check for Promos
+        const currentPromos = userProfile?.usage?.promosGenerated || 0;
+        if (!checkUsageLimit('promosGenerated', currentPromos)) {
+            return;
+        }
+
         if (selectedItemIds.size === 0) return;
         setIsGeneratingBulkPromo(true);
         
@@ -700,6 +745,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 contents: prompt
             });
             setBulkPromoContent(response.text);
+            await handleIncrementUsage('promosGenerated');
         } catch (error) {
             setToastMessage("Failed to generate promo.");
         } finally {
@@ -732,7 +778,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                                 onClick={() => setShowSubscriptionModal(true)}
                                 className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
                             >
-                                Free Plan (Upgrade to Pro)
+                                Free Plan ({userProfile?.usage?.aiScans || 0}/{PLAN_LIMITS.free.maxAiScans} Scans Used)
                             </button>
                         )}
                     </div>
@@ -752,21 +798,10 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 </div>
             </header>
 
-            {/* Business Pilot Section - Gated inside component logic or UI */}
+            {/* Business Pilot Section */}
             <div className="relative">
-                {userProfile?.plan !== 'pro' && (
-                    <div className="absolute inset-0 z-10 bg-white/50 dark:bg-gray-900/50 backdrop-blur-[2px] flex items-center justify-center rounded-xl border border-dashed border-gray-300 dark:border-gray-600">
-                         <div className="text-center p-6">
-                             <SparklesIcon className="w-12 h-12 text-indigo-500 mx-auto mb-3" />
-                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Unlock Business Intelligence</h3>
-                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Get AI-driven insights to grow your sales.</p>
-                             <button onClick={() => setShowSubscriptionModal(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700">Upgrade to Pro</button>
-                         </div>
-                    </div>
-                )}
-                 <div className={userProfile?.plan !== 'pro' ? 'filter blur-sm pointer-events-none' : ''}>
-                     <BusinessPilot inventory={inventory} />
-                 </div>
+                 {/* Passed checkUsageLimit to BusinessPilot to handle limits internally */}
+                 <BusinessPilot inventory={inventory} checkUsageLimit={checkUsageLimit} onIncrementUsage={handleIncrementUsage} />
             </div>
 
             <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -803,7 +838,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                             onClick={() => handleCaptureOpen('invoice')}
                             className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group relative"
                         >
-                             {userProfile?.plan !== 'pro' && <div className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full" title="Pro Feature" />}
+                             {userProfile?.plan !== 'pro' && <div className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full" title="Limited" />}
                              <div className="p-2 bg-green-100 dark:bg-green-900 rounded-full mb-1 group-hover:bg-green-200 dark:group-hover:bg-green-800">
                                 <DocumentTextIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
                              </div>
@@ -813,7 +848,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                             onClick={() => handleCaptureOpen('shelf-analysis')}
                             className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group relative"
                         >
-                             {userProfile?.plan !== 'pro' && <div className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full" title="Pro Feature" />}
+                             {userProfile?.plan !== 'pro' && <div className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full" title="Limited" />}
                              <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-full mb-1 group-hover:bg-purple-200 dark:group-hover:bg-purple-800">
                                 <PresentationChartLineIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                              </div>
@@ -859,7 +894,10 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 totalItems={totalItems}
                 totalValue={totalValue}
                 onStartChat={() => setIsChatModalOpen(true)}
-                onAddItemClick={() => startAndGreetSession()}
+                onAddItemClick={() => {
+                    if(!checkUsageLimit('inventoryCount', inventoryRef.current.length)) return;
+                    startAndGreetSession();
+                }}
                 onEdit={(item) => setEditingItem(item)}
                 selectedItems={selectedItemIds}
                 onSelectionChange={setSelectedItemIds}

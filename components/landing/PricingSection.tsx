@@ -9,11 +9,11 @@ const plans = [
         period: '/ forever',
         description: 'Perfect for small shops starting their digital journey.',
         features: [
-            'Up to 50 Inventory Items',
-            'Basic Voice Commands',
+            '50 Inventory Items Limit',
+            '5 AI Scans per month',
+            '3 Promo Generations per month',
             'Real-time Supplier Chat',
-            'Manual Item Entry',
-            'Single Photo Snap'
+            'Basic Voice Commands'
         ],
         cta: 'Start for Free',
         popular: false,
@@ -25,10 +25,9 @@ const plans = [
         description: 'For serious shopkeepers who want to grow sales.',
         features: [
             'Unlimited Inventory Items',
-            'AI Invoice Scanning (Paper to Digital)',
-            'Shelf Doctor (Visual Merchandising)',
-            'WhatsApp Promo Generator',
-            '360° Shop Walkthrough Analysis',
+            'Unlimited AI Invoice Scanning',
+            'Unlimited Shelf Doctor Analysis',
+            'Unlimited Promo Generation',
             'Priority Support'
         ],
         cta: 'Upgrade to Pro',
@@ -45,7 +44,7 @@ const PricingSection: React.FC = () => {
                         Simple Pricing. <span className="text-indigo-600">Maximum Profit.</span>
                     </h2>
                     <p className="text-lg text-gray-600 dark:text-gray-300 mt-4">
-                        Cost less than a daily chai ☕. Recover the investment with a single optimized sale.
+                        Try all features for free with usage limits. Upgrade to unleash full power.
                     </p>
                 </div>
 

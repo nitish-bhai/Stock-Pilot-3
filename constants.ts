@@ -91,3 +91,17 @@ export const BULK_ACTION_TOOL: FunctionDeclaration = {
         required: ['actionType'],
     }
 };
+
+// Plan Limits Configuration
+export const PLAN_LIMITS = {
+    free: {
+        maxInventoryItems: 50,
+        maxAiScans: 5, // Includes Invoice Scan & Shelf Doctor
+        maxPromos: 3,  // Includes Business Pilot & Bulk Promo
+    },
+    pro: {
+        maxInventoryItems: 999999,
+        maxAiScans: 999999,
+        maxPromos: 999999,
+    }
+};

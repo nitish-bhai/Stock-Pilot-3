@@ -21,6 +21,12 @@ export interface InventoryItem {
 
 export type User = FirebaseUser;
 
+export interface UserUsage {
+    aiScans: number; // Tracks Invoice & Shelf Doctor usage
+    promosGenerated: number; // Tracks WhatsApp promo generation
+    inventoryCount: number; // Tracks total items (though DB query is better for accurate count)
+}
+
 export interface UserProfile {
     uid: string;
     email: string;
@@ -31,6 +37,7 @@ export interface UserProfile {
     loginMethod: 'email' | 'google';
     plan: 'free' | 'pro'; // Monetization
     subscriptionExpiry?: Timestamp;
+    usage: UserUsage; // New field for tracking limits
 }
 
 export interface Chat {
