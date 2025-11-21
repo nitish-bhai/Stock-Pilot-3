@@ -9,6 +9,7 @@ import MicButton from './MicButton';
 import CameraCapture from './CameraCapture';
 import EditItemModal from './EditItemModal';
 import BusinessPilot from './BusinessPilot';
+import SubscriptionModal from './SubscriptionModal';
 import { encode, decode, decodeAudioData } from '../utils/audioUtils';
 import { getAi } from '../services/geminiService';
 import { addOrUpdateItem, removeItem, updateInventoryItem, deleteItemsBatch } from '../services/inventoryService';
@@ -72,6 +73,9 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     const [bulkPromoContent, setBulkPromoContent] = useState<string | null>(null);
     const [isGeneratingBulkPromo, setIsGeneratingBulkPromo] = useState(false);
 
+    // Subscription Modal State
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+
     // REF for selectedItems to access fresh state inside the Live API closure
     const selectedItemIdsRef = useRef<Set<string>>(new Set());
     const inventoryRef = useRef<InventoryItem[]>([]);
@@ -120,6 +124,13 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     useEffect(() => {
         transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [transcript]);
+
+    // --- Premium Feature Gating Helper ---
+    const checkProFeature = (featureName: string) => {
+        if (userProfile?.plan === 'pro') return true;
+        setShowSubscriptionModal(true);
+        return false;
+    };
 
     const handleToolCall = useCallback(async (fc: FunctionCall, session: LiveSession): Promise<void> => {
         if (!user || !userProfile) return;
@@ -214,23 +225,29 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
                             result = { success: false, message: "Failed to delete selected items." };
                         }
                     } else if (actionType === 'promote') {
-                         setIsGeneratingBulkPromo(true);
-                         const selectedItems = inventoryRef.current.filter(i => currentSelection.has(i.id));
-                         const itemNames = selectedItems.map(i => i.name).join(", ");
-                         
-                         const ai = getAi();
-                         const prompt = `Create a compelling "Bundle Deal" WhatsApp promo message for these items: ${itemNames}. 
-                         Suggest a discount (e.g. "Buy all for 15% off"). Use emojis. Make it short and exciting.`;
+                         // Gated Feature
+                         if (userProfile.plan !== 'pro') {
+                             result = { success: false, message: "The promotion feature is available in Vyapar Pro. Please upgrade on your dashboard." };
+                             // We can't open the modal from here easily without a signal, but the voice response handles it.
+                         } else {
+                             setIsGeneratingBulkPromo(true);
+                             const selectedItems = inventoryRef.current.filter(i => currentSelection.has(i.id));
+                             const itemNames = selectedItems.map(i => i.name).join(", ");
+                             
+                             const ai = getAi();
+                             const prompt = `Create a compelling "Bundle Deal" WhatsApp promo message for these items: ${itemNames}. 
+                             Suggest a discount (e.g. "Buy all for 15% off"). Use emojis. Make it short and exciting.`;
 
-                         ai.models.generateContent({
-                            model: 'gemini-2.5-flash',
-                            contents: prompt
-                        }).then(res => {
-                            setBulkPromoContent(res.text);
-                            setIsGeneratingBulkPromo(false);
-                        });
-                        
-                        result = { success: true, message: `I'm generating a promotion for your ${currentSelection.size} selected items. Check your screen.` };
+                             ai.models.generateContent({
+                                model: 'gemini-2.5-flash',
+                                contents: prompt
+                            }).then(res => {
+                                setBulkPromoContent(res.text);
+                                setIsGeneratingBulkPromo(false);
+                            });
+                            
+                            result = { success: true, message: `I'm generating a promotion for your ${currentSelection.size} selected items. Check your screen.` };
+                         }
                     }
                 }
                 break;
@@ -443,6 +460,9 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
     };
 
     const handleCaptureOpen = (mode: 'item' | 'invoice' | 'shelf-analysis') => {
+        // GATE: Only allow basic 'item' snap for free plan. Invoice and Shelf are Pro.
+        if (mode !== 'item' && !checkProFeature(mode)) return;
+        
         setCameraMode(mode);
         setIsCameraOpen(true);
     };
@@ -663,6 +683,7 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
     };
 
     const handleBulkPromo = async () => {
+        if (!checkProFeature('bulkPromo')) return;
         if (selectedItemIds.size === 0) return;
         setIsGeneratingBulkPromo(true);
         
@@ -701,6 +722,20 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
                     <p className="text-gray-500 dark:text-gray-400">Welcome, {userProfile?.name}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                        {userProfile?.plan === 'pro' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+                                Vyapar Pro 🚀
+                            </span>
+                        ) : (
+                            <button 
+                                onClick={() => setShowSubscriptionModal(true)}
+                                className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
+                            >
+                                Free Plan (Upgrade to Pro)
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <div className="flex items-center gap-3">
                     <button onClick={onOpenNotifications} title="Notifications" className="relative p-3 text-gray-500 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600">
@@ -717,8 +752,22 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                 </div>
             </header>
 
-            {/* Business Pilot Section */}
-            <BusinessPilot inventory={inventory} />
+            {/* Business Pilot Section - Gated inside component logic or UI */}
+            <div className="relative">
+                {userProfile?.plan !== 'pro' && (
+                    <div className="absolute inset-0 z-10 bg-white/50 dark:bg-gray-900/50 backdrop-blur-[2px] flex items-center justify-center rounded-xl border border-dashed border-gray-300 dark:border-gray-600">
+                         <div className="text-center p-6">
+                             <SparklesIcon className="w-12 h-12 text-indigo-500 mx-auto mb-3" />
+                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Unlock Business Intelligence</h3>
+                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Get AI-driven insights to grow your sales.</p>
+                             <button onClick={() => setShowSubscriptionModal(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700">Upgrade to Pro</button>
+                         </div>
+                    </div>
+                )}
+                 <div className={userProfile?.plan !== 'pro' ? 'filter blur-sm pointer-events-none' : ''}>
+                     <BusinessPilot inventory={inventory} />
+                 </div>
+            </div>
 
             <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
@@ -752,8 +801,9 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                         </button>
                         <button 
                             onClick={() => handleCaptureOpen('invoice')}
-                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group"
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group relative"
                         >
+                             {userProfile?.plan !== 'pro' && <div className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full" title="Pro Feature" />}
                              <div className="p-2 bg-green-100 dark:bg-green-900 rounded-full mb-1 group-hover:bg-green-200 dark:group-hover:bg-green-800">
                                 <DocumentTextIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
                              </div>
@@ -761,8 +811,9 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                         </button>
                         <button 
                             onClick={() => handleCaptureOpen('shelf-analysis')}
-                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group"
+                            className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group relative"
                         >
+                             {userProfile?.plan !== 'pro' && <div className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full" title="Pro Feature" />}
                              <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-full mb-1 group-hover:bg-purple-200 dark:group-hover:bg-purple-800">
                                 <PresentationChartLineIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                              </div>
@@ -1059,6 +1110,11 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                         <p className="text-gray-900 dark:text-white font-medium">Crafting bundle offer...</p>
                     </div>
                 </div>
+            )}
+            
+            {/* Subscription Modal */}
+            {showSubscriptionModal && (
+                <SubscriptionModal onClose={() => setShowSubscriptionModal(false)} />
             )}
 
         </main>

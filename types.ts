@@ -29,6 +29,8 @@ export interface UserProfile {
     categories: string[]; // For both sellers (store types) and suppliers (supply types)
     photoURL?: string;
     loginMethod: 'email' | 'google';
+    plan: 'free' | 'pro'; // Monetization
+    subscriptionExpiry?: Timestamp;
 }
 
 export interface Chat {

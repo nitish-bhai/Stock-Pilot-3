@@ -6,6 +6,7 @@ import FeaturesSection from './FeaturesSection';
 import BenefitsSection from './BenefitsSection';
 import ForSellersSection from './ForSellersSection';
 import ForSuppliersSection from './ForSuppliersSection';
+import PricingSection from './PricingSection';
 import TestimonialsSection from './TestimonialsSection';
 import Footer from './Footer';
 import LoginComponent from '../Login';
@@ -34,6 +35,7 @@ const LandingPage: React.FC = () => {
                 <BenefitsSection />
                 <ForSellersSection />
                 <ForSuppliersSection />
+                <PricingSection />
                 <TestimonialsSection />
             </main>
             <Footer />

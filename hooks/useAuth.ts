@@ -58,6 +58,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                name: '',
                categories: [],
                loginMethod: 'email',
+               plan: 'free'
            };
            await setUserProfile(uid, newProfile);
            setUserProfileState(newProfile);
@@ -80,6 +81,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 categories: [],
                 photoURL: user.photoURL || '',
                 loginMethod: 'google',
+                plan: 'free'
             };
             await setUserProfile(user.uid, newProfile);
             setUserProfileState(newProfile as UserProfile);
