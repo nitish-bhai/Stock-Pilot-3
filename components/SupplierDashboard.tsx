@@ -271,11 +271,11 @@ const SupplierDashboard: React.FC<SupplierDashboardProps> = ({ onNavigateToChat,
                                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold text-white shadow-sm
                                                         ${hasUnread ? 'bg-indigo-600' : 'bg-gray-400 dark:bg-gray-600'}
                                                     `}>
-                                                        {chat.sellerName.charAt(0).toUpperCase()}
+                                                        {chat.sellerName?.charAt(0)?.toUpperCase() || '?'}
                                                     </div>
                                                     <div>
                                                         <p className={`font-semibold text-gray-900 dark:text-white ${hasUnread ? 'font-bold' : ''}`}>
-                                                            {chat.sellerName}
+                                                            {chat.sellerName || 'Unknown Seller'}
                                                         </p>
                                                         <p className={`text-sm truncate max-w-[200px] md:max-w-sm ${hasUnread ? 'text-indigo-600 dark:text-indigo-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                                                             {chat.lastMessageText}

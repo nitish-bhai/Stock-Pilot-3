@@ -1,8 +1,8 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc, increment } from "firebase/firestore";
-import { UserProfile } from "../types";
+import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc, increment, addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { UserProfile, Transaction } from "../types";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDWBos5f3koVvfnJ5otTvHVIzD4QDGNvjU",
@@ -76,4 +76,56 @@ export const findUsersByCategories = async (categories: string[], role: 'seller'
         users.push(doc.data() as UserProfile);
     });
     return users;
+};
+
+// --- Admin Functions ---
+
+/**
+ * Fetches all users in the system.
+ * NOTE: In a production environment with thousands of users, this should be paginated or handled via Cloud Functions.
+ */
+export const getAllUsers = async (): Promise<UserProfile[]> => {
+    const usersRef = collection(db, 'users');
+    const snapshot = await getDocs(usersRef);
+    return snapshot.docs.map(doc => doc.data() as UserProfile);
+};
+
+/**
+ * Records a financial transaction.
+ */
+export const recordTransaction = async (
+    userId: string, 
+    userName: string, 
+    amount: number, 
+    plan: 'pro', 
+    paymentMethod: string
+): Promise<void> => {
+    const txRef = collection(db, 'transactions');
+    await addDoc(txRef, {
+        userId,
+        userName,
+        amount,
+        plan,
+        date: serverTimestamp(),
+        status: 'success',
+        paymentMethod
+    });
+};
+
+/**
+ * Fetches all transaction history.
+ */
+export const getAllTransactions = async (): Promise<Transaction[]> => {
+    const txRef = collection(db, 'transactions');
+    const snapshot = await getDocs(txRef);
+    const transactions = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    } as Transaction));
+    // Sort desc in memory
+    return transactions.sort((a, b) => {
+         const dateA = a.date?.toMillis ? a.date.toMillis() : 0;
+         const dateB = b.date?.toMillis ? b.date.toMillis() : 0;
+         return dateB - dateA;
+    });
 };

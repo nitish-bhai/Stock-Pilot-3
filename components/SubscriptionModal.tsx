@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { CheckIcon, SparklesIcon, XMarkIcon } from './icons';
 import { useAuth } from '../hooks/useAuth';
-import { setUserProfile } from '../services/firebase';
+import { setUserProfile, recordTransaction } from '../services/firebase';
 import Toast from './Toast';
 
 interface SubscriptionModalProps {
@@ -12,7 +12,7 @@ interface SubscriptionModalProps {
 }
 
 const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ onClose, onSuccess }) => {
-    const { user, updateUserProfileState } = useAuth();
+    const { user, userProfile, updateUserProfileState } = useAuth();
     const [isProcessing, setIsProcessing] = useState(false);
     const [step, setStep] = useState<'details' | 'payment' | 'success'>('details');
     
@@ -45,8 +45,19 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ onClose, onSucces
         // Simulate Payment Gateway Delay
         setTimeout(async () => {
             try {
+                // 1. Update User Profile
                 await setUserProfile(user.uid, { plan: 'pro' });
                 updateUserProfileState({ plan: 'pro' });
+                
+                // 2. Record Transaction for Admin Panel
+                await recordTransaction(
+                    user.uid,
+                    userProfile?.name || 'Unknown User',
+                    299,
+                    'pro',
+                    'Card (Simulated)'
+                );
+
                 setStep('success');
                 
                 setTimeout(() => {

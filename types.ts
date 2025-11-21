@@ -40,6 +40,17 @@ export interface UserProfile {
     usage: UserUsage; // New field for tracking limits
 }
 
+export interface Transaction {
+    id: string;
+    userId: string;
+    userName: string;
+    amount: number;
+    plan: 'pro';
+    date: Timestamp;
+    status: 'success' | 'failed';
+    paymentMethod: string; // e.g., 'Credit Card' (simulated)
+}
+
 export interface Chat {
     id: string;
     participants: string[]; // [sellerId, supplierId]
