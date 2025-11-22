@@ -1,3 +1,13 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Hide default cursor on non-touch devices so CustomCursor can take over */
+@media (hover: hover) and (pointer: fine) {
+    * {
+        cursor: none !important;
+    }
+    /* Ensure input fields show text cursor or we implement a custom text cursor */
+    /* For simplicity in this demo, we keep cursor none and let the dot guide the user */
+}

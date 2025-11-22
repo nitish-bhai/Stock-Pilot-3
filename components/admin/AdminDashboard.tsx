@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { getSiteConfig, updateSiteConfig } from '../../services/siteConfigService';
 import { getAllUsers, getAllTransactions } from '../../services/firebase';
-import { SiteConfig, SiteFeature, UserProfile, Transaction } from '../../types';
-import { LogoutIcon, ChartBarIcon, PencilSquareIcon, PlusIcon, TrashIcon, UsersIcon, DocumentTextIcon } from '../icons';
+import { SiteConfig, SiteFeature, UserProfile, Transaction, Testimonial, FAQ } from '../../types';
+import { LogoutIcon, PencilSquareIcon, PlusIcon, TrashIcon } from '../icons';
 import Toast from '../Toast';
 
 interface AdminDashboardProps {
@@ -20,7 +20,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     // Content Sub-tab
-    const [contentTab, setContentTab] = useState<'hero' | 'features' | 'testimonials' | 'faq'>('hero');
+    const [contentTab, setContentTab] = useState<'hero' | 'features' | 'testimonials' | 'faq' | 'style' | 'footer'>('hero');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -62,6 +62,95 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         setConfig({ ...config, [key]: value });
     };
 
+    const updateStyle = (key: string, value: string) => {
+        if (!config) return;
+        setConfig({
+            ...config,
+            style: {
+                ...config.style!,
+                [key]: value
+            }
+        });
+    };
+    
+    const updateSocialLink = (platform: string, url: string) => {
+        if (!config) return;
+        setConfig({
+            ...config,
+            footer: {
+                ...config.footer,
+                socialLinks: {
+                    ...config.footer.socialLinks,
+                    [platform]: url
+                }
+            }
+        });
+    };
+
+    // Helper for array updates
+    const updateArrayItem = (arrayName: 'features' | 'testimonials' | 'faqs', index: number, field: string, value: any) => {
+        if (!config) return;
+        const newArray = [...config[arrayName]];
+        (newArray[index] as any)[field] = value;
+        setConfig({ ...config, [arrayName]: newArray });
+    };
+
+    const removeArrayItem = (arrayName: 'features' | 'testimonials' | 'faqs', index: number) => {
+        if (!config) return;
+        const newArray = config[arrayName].filter((_, i) => i !== index);
+        setConfig({ ...config, [arrayName]: newArray as any }); // Typescript workaround for union
+    };
+
+    const addArrayItem = (arrayName: 'features' | 'testimonials' | 'faqs') => {
+        if (!config) return;
+        let newItem;
+        if (arrayName === 'features') {
+            newItem = { title: 'New Feature', description: 'Description here', iconName: 'Inventory' };
+        } else if (arrayName === 'testimonials') {
+            newItem = { name: 'New User', role: 'Customer', quote: 'Great service!', image: 'https://via.placeholder.com/100' };
+        } else {
+            newItem = { question: 'New Question?', answer: 'Answer here.' };
+        }
+        setConfig({ ...config, [arrayName]: [...config[arrayName], newItem] as any });
+    };
+    
+    const updateFooterLink = (index: number, field: 'label' | 'url', value: string) => {
+        if (!config) return;
+        const newLinks = [...config.footer.links];
+        newLinks[index] = { ...newLinks[index], [field]: value };
+        setConfig({
+            ...config,
+            footer: {
+                ...config.footer,
+                links: newLinks
+            }
+        });
+    };
+    
+    const addFooterLink = () => {
+        if (!config) return;
+        const newLinks = [...config.footer.links, { label: 'New Link', url: '#' }];
+        setConfig({
+            ...config,
+            footer: {
+                ...config.footer,
+                links: newLinks
+            }
+        });
+    };
+    
+    const removeFooterLink = (index: number) => {
+         if (!config) return;
+        const newLinks = config.footer.links.filter((_, i) => i !== index);
+        setConfig({
+            ...config,
+            footer: {
+                ...config.footer,
+                links: newLinks
+            }
+        });
+    };
+
     // Stats Calculation
     const totalUsers = users.length;
     const sellers = users.filter(u => u.role === 'seller').length;
@@ -71,9 +160,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const totalRevenue = transactions.reduce((sum, tx) => sum + tx.amount, 0);
     
     const copyEmails = () => {
-        const emails = users.map(u => u.email).join(', ');
+        const emails = users.map(u => u?.email).filter(Boolean).join(', ');
         navigator.clipboard.writeText(emails);
-        setToastMessage(`Copied ${users.length} emails to clipboard!`);
+        setToastMessage(`Copied emails to clipboard!`);
     };
 
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(val);
@@ -81,6 +170,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         if (!timestamp) return 'N/A';
         return timestamp.toDate ? timestamp.toDate().toLocaleDateString() : new Date().toLocaleDateString();
     };
+
+    const iconOptions = ['SmartMatch', 'Chat', 'Inventory', 'Expiry', 'Secure', 'Cloud', 'Camera', 'Invoice', 'Analytics'];
 
     if (isLoading) return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white text-xl font-bold">Loading Admin Command Center...</div>;
     if (!config) return null;
@@ -136,11 +227,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 </div>
 
                 {/* Main Tabs */}
-                <div className="flex border-b border-gray-700 mb-6 gap-6">
-                    <button onClick={() => setActiveTab('overview')} className={`pb-3 px-1 font-medium transition-colors ${activeTab === 'overview' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>Overview</button>
-                    <button onClick={() => setActiveTab('users')} className={`pb-3 px-1 font-medium transition-colors ${activeTab === 'users' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>User Management</button>
-                    <button onClick={() => setActiveTab('financials')} className={`pb-3 px-1 font-medium transition-colors ${activeTab === 'financials' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>Financials</button>
-                    <button onClick={() => setActiveTab('content')} className={`pb-3 px-1 font-medium transition-colors ${activeTab === 'content' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>Site Content</button>
+                <div className="flex border-b border-gray-700 mb-6 gap-6 overflow-x-auto">
+                    <button onClick={() => setActiveTab('overview')} className={`pb-3 px-1 font-medium transition-colors whitespace-nowrap ${activeTab === 'overview' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>Overview</button>
+                    <button onClick={() => setActiveTab('users')} className={`pb-3 px-1 font-medium transition-colors whitespace-nowrap ${activeTab === 'users' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>User Management</button>
+                    <button onClick={() => setActiveTab('financials')} className={`pb-3 px-1 font-medium transition-colors whitespace-nowrap ${activeTab === 'financials' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>Financials</button>
+                    <button onClick={() => setActiveTab('content')} className={`pb-3 px-1 font-medium transition-colors whitespace-nowrap ${activeTab === 'content' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-400 hover:text-white'}`}>Site Content</button>
                 </div>
 
                 {/* Overview Tab */}
@@ -153,7 +244,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                                     <li key={i} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
                                         <div className="flex items-center gap-3">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${u.role === 'seller' ? 'bg-indigo-600' : 'bg-purple-600'}`}>
-                                                {u.name?.charAt(0)?.toUpperCase() || '?'}
+                                                {(u.name || '?').charAt(0).toUpperCase()}
                                             </div>
                                             <div>
                                                 <p className="font-medium text-sm">{u.name || 'Unknown User'}</p>
@@ -204,7 +295,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                                         <th className="px-6 py-3">Name / Email</th>
                                         <th className="px-6 py-3">Role</th>
                                         <th className="px-6 py-3">Plan</th>
-                                        <th className="px-6 py-3">Usage (Scans/Promos)</th>
+                                        <th className="px-6 py-3">Usage</th>
                                         <th className="px-6 py-3">Categories</th>
                                     </tr>
                                 </thead>
@@ -226,14 +317,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {user.usage?.aiScans || 0} / {user.usage?.promosGenerated || 0}
+                                                {user.usage?.aiScans || 0} Scans
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-wrap gap-1">
                                                     {user.categories?.slice(0,3).map((c, ci) => (
                                                         <span key={ci} className="text-xs bg-gray-700 px-1 rounded">{c}</span>
                                                     ))}
-                                                    {(user.categories?.length || 0) > 3 && <span className="text-xs text-gray-500">+{user.categories!.length - 3}</span>}
                                                 </div>
                                             </td>
                                         </tr>
@@ -262,9 +352,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-700">
-                                    {transactions.length === 0 ? (
-                                        <tr><td colSpan={5} className="p-8 text-center italic">No transactions recorded yet.</td></tr>
-                                    ) : transactions.map((tx, i) => (
+                                    {transactions.map((tx, i) => (
                                         <tr key={i} className="hover:bg-gray-700/50 transition-colors">
                                             <td className="px-6 py-4">{formatDate(tx.date)}</td>
                                             <td className="px-6 py-4 font-medium text-white">{tx.userName}</td>
@@ -286,7 +374,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <nav className="bg-gray-800 rounded-lg shadow p-4 h-fit">
                             <ul className="space-y-2">
-                                {['hero', 'features', 'testimonials', 'faq'].map(tab => (
+                                {['hero', 'features', 'testimonials', 'faq', 'style', 'footer'].map(tab => (
                                     <li key={tab}>
                                         <button 
                                             onClick={() => setContentTab(tab as any)}
@@ -302,7 +390,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                                 disabled={saving}
                                 className="w-full mt-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all disabled:opacity-50 text-sm"
                             >
-                                {saving ? 'Saving...' : 'Save Content'}
+                                {saving ? 'Saving...' : 'Save Changes'}
                             </button>
                         </nav>
                         
@@ -324,12 +412,177 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                                     </div>
                                 </div>
                              )}
-                             {/* Simplified Feature/FAQ editors for brevity - keeping structure consistent */}
-                             {contentTab !== 'hero' && (
-                                 <div className="text-center py-10 text-gray-500">
-                                     <p>Editor for {contentTab} is available in the standard view.</p>
-                                     <p className="text-xs mt-2">(Use the code from previous step for full editing capabilities here if needed)</p>
+
+                             {contentTab === 'features' && (
+                                 <div className="space-y-6">
+                                     <div className="flex justify-between items-center">
+                                        <h3 className="text-lg font-bold text-white">Features</h3>
+                                        <button onClick={() => addArrayItem('features')} className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-1 rounded hover:bg-indigo-700"><PlusIcon className="w-4 h-4"/> Add Feature</button>
+                                     </div>
+                                     {config.features.map((feat, idx) => (
+                                         <div key={idx} className="bg-gray-700 p-4 rounded border border-gray-600 relative">
+                                             <button onClick={() => removeArrayItem('features', idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-300"><TrashIcon className="w-4 h-4" /></button>
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                 <div>
+                                                     <label className="text-xs text-gray-400">Title</label>
+                                                     <input value={feat.title} onChange={e => updateArrayItem('features', idx, 'title', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" />
+                                                 </div>
+                                                 <div>
+                                                     <label className="text-xs text-gray-400">Icon</label>
+                                                     <select value={feat.iconName} onChange={e => updateArrayItem('features', idx, 'iconName', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white">
+                                                         {iconOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                     </select>
+                                                 </div>
+                                                 <div className="md:col-span-2">
+                                                     <label className="text-xs text-gray-400">Description</label>
+                                                     <input value={feat.description} onChange={e => updateArrayItem('features', idx, 'description', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" />
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     ))}
                                  </div>
+                             )}
+
+                             {contentTab === 'testimonials' && (
+                                 <div className="space-y-6">
+                                     <div className="flex justify-between items-center">
+                                        <h3 className="text-lg font-bold text-white">Testimonials</h3>
+                                        <button onClick={() => addArrayItem('testimonials')} className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-1 rounded hover:bg-indigo-700"><PlusIcon className="w-4 h-4"/> Add Testimonial</button>
+                                     </div>
+                                     {config.testimonials.map((t, idx) => (
+                                         <div key={idx} className="bg-gray-700 p-4 rounded border border-gray-600 relative">
+                                             <button onClick={() => removeArrayItem('testimonials', idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-300"><TrashIcon className="w-4 h-4" /></button>
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                 <div>
+                                                     <label className="text-xs text-gray-400">Name</label>
+                                                     <input value={t.name} onChange={e => updateArrayItem('testimonials', idx, 'name', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" />
+                                                 </div>
+                                                 <div>
+                                                     <label className="text-xs text-gray-400">Role</label>
+                                                     <input value={t.role} onChange={e => updateArrayItem('testimonials', idx, 'role', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" />
+                                                 </div>
+                                                 <div className="md:col-span-2">
+                                                     <label className="text-xs text-gray-400">Quote</label>
+                                                     <textarea value={t.quote} onChange={e => updateArrayItem('testimonials', idx, 'quote', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" rows={2} />
+                                                 </div>
+                                                 <div className="md:col-span-2">
+                                                     <label className="text-xs text-gray-400">Image URL</label>
+                                                     <input value={t.image} onChange={e => updateArrayItem('testimonials', idx, 'image', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" />
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     ))}
+                                 </div>
+                             )}
+
+                             {contentTab === 'faq' && (
+                                 <div className="space-y-6">
+                                     <div className="flex justify-between items-center">
+                                        <h3 className="text-lg font-bold text-white">FAQs</h3>
+                                        <button onClick={() => addArrayItem('faqs')} className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-1 rounded hover:bg-indigo-700"><PlusIcon className="w-4 h-4"/> Add FAQ</button>
+                                     </div>
+                                     {config.faqs.map((f, idx) => (
+                                         <div key={idx} className="bg-gray-700 p-4 rounded border border-gray-600 relative">
+                                             <button onClick={() => removeArrayItem('faqs', idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-300"><TrashIcon className="w-4 h-4" /></button>
+                                             <div className="space-y-3">
+                                                 <div>
+                                                     <label className="text-xs text-gray-400">Question</label>
+                                                     <input value={f.question} onChange={e => updateArrayItem('faqs', idx, 'question', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" />
+                                                 </div>
+                                                 <div>
+                                                     <label className="text-xs text-gray-400">Answer</label>
+                                                     <textarea value={f.answer} onChange={e => updateArrayItem('faqs', idx, 'answer', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" rows={2} />
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     ))}
+                                 </div>
+                             )}
+
+                             {contentTab === 'style' && (
+                                 <div className="space-y-6">
+                                     <h3 className="text-lg font-bold text-white">Theme Styling</h3>
+                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                         <div>
+                                             <label className="block text-sm text-gray-400 mb-1">Primary Color</label>
+                                             <div className="flex gap-2">
+                                                <input type="color" value={config.style?.primaryColor || '#4F46E5'} onChange={e => updateStyle('primaryColor', e.target.value)} className="h-10 w-14 cursor-pointer rounded bg-transparent border-0" />
+                                                <input type="text" value={config.style?.primaryColor || '#4F46E5'} onChange={e => updateStyle('primaryColor', e.target.value)} className="flex-1 bg-gray-700 border border-gray-600 rounded p-2 text-white text-sm" />
+                                             </div>
+                                         </div>
+                                         <div>
+                                             <label className="block text-sm text-gray-400 mb-1">Text Color (Light Mode)</label>
+                                              <div className="flex gap-2">
+                                                <input type="color" value={config.style?.textColorLight || '#111827'} onChange={e => updateStyle('textColorLight', e.target.value)} className="h-10 w-14 cursor-pointer rounded bg-transparent border-0" />
+                                                <input type="text" value={config.style?.textColorLight || '#111827'} onChange={e => updateStyle('textColorLight', e.target.value)} className="flex-1 bg-gray-700 border border-gray-600 rounded p-2 text-white text-sm" />
+                                             </div>
+                                         </div>
+                                         <div>
+                                             <label className="block text-sm text-gray-400 mb-1">Text Color (Dark Mode)</label>
+                                              <div className="flex gap-2">
+                                                <input type="color" value={config.style?.textColorDark || '#F9FAFB'} onChange={e => updateStyle('textColorDark', e.target.value)} className="h-10 w-14 cursor-pointer rounded bg-transparent border-0" />
+                                                <input type="text" value={config.style?.textColorDark || '#F9FAFB'} onChange={e => updateStyle('textColorDark', e.target.value)} className="flex-1 bg-gray-700 border border-gray-600 rounded p-2 text-white text-sm" />
+                                             </div>
+                                         </div>
+                                     </div>
+                                     <p className="text-sm text-gray-500 italic">Note: These colors will apply to the landing page after saving.</p>
+                                 </div>
+                             )}
+                             
+                             {contentTab === 'footer' && (
+                                <div className="space-y-8">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-white mb-4">Social Media Links</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">Twitter / X</label>
+                                                <input value={config.footer?.socialLinks?.twitter || ''} onChange={e => updateSocialLink('twitter', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">LinkedIn</label>
+                                                <input value={config.footer?.socialLinks?.linkedin || ''} onChange={e => updateSocialLink('linkedin', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">YouTube</label>
+                                                <input value={config.footer?.socialLinks?.youtube || ''} onChange={e => updateSocialLink('youtube', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">Facebook</label>
+                                                <input value={config.footer?.socialLinks?.facebook || ''} onChange={e => updateSocialLink('facebook', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">Instagram</label>
+                                                <input value={config.footer?.socialLinks?.instagram || ''} onChange={e => updateSocialLink('instagram', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-lg font-bold text-white">Footer Links</h3>
+                                            <button onClick={addFooterLink} className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-1 rounded hover:bg-indigo-700"><PlusIcon className="w-4 h-4"/> Add Link</button>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {config.footer?.links?.map((link, idx) => (
+                                                <div key={idx} className="flex items-center gap-3 bg-gray-700 p-3 rounded">
+                                                    <input 
+                                                        value={link.label} 
+                                                        onChange={e => updateFooterLink(idx, 'label', e.target.value)} 
+                                                        placeholder="Label (e.g. Privacy)" 
+                                                        className="flex-1 bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" 
+                                                    />
+                                                    <input 
+                                                        value={link.url} 
+                                                        onChange={e => updateFooterLink(idx, 'url', e.target.value)} 
+                                                        placeholder="URL" 
+                                                        className="flex-1 bg-gray-800 border border-gray-600 rounded p-2 text-sm text-white" 
+                                                    />
+                                                    <button onClick={() => removeFooterLink(idx)} className="text-red-400 hover:text-red-300"><TrashIcon className="w-5 h-5" /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
                              )}
                         </div>
                     </div>

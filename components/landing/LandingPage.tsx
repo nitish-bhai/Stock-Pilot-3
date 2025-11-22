@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import HeroSection from './HeroSection';
+import StatsSection from './StatsSection';
 import FeaturesSection from './FeaturesSection';
 import BenefitsSection from './BenefitsSection';
 import ForSellersSection from './ForSellersSection';
@@ -25,23 +26,41 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAdminClick }) => {
     useEffect(() => {
         AOS.init({
             once: true,
-            duration: 600,
-            easing: 'ease-out-sine',
+            duration: 1000,
+            easing: 'ease-out-cubic',
+            offset: 100,
+            delay: 50,
         });
     }, []);
 
     const handleOpenLoginModal = () => setLoginModalOpen(true);
     const handleCloseLoginModal = () => setLoginModalOpen(false);
     
-    if (loading && !config) {
-        // Optional loading state if needed, but fetching defaults is fast
-    }
+    // Apply dynamic styles if available
+    const customStyle = config?.style ? {
+        '--primary-color': config.style.primaryColor,
+        '--text-light': config.style.textColorLight,
+        '--text-dark': config.style.textColorDark,
+    } as React.CSSProperties : {};
 
     return (
-        <div className="bg-white dark:bg-gray-900">
+        <div 
+            className="bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-300"
+            style={customStyle}
+        >
+            <style>{`
+                :root {
+                    --text-light-default: #111827;
+                    --text-dark-default: #F9FAFB;
+                }
+                /* Override text colors if variables are set */
+                .text-gray-900 { color: var(--text-light, var(--text-light-default)); }
+                .dark .text-white { color: var(--text-dark, var(--text-dark-default)); }
+            `}</style>
             <Header onLoginClick={handleOpenLoginModal} />
             <main>
                 <HeroSection onGetStartedClick={handleOpenLoginModal} config={config?.hero} />
+                <StatsSection />
                 <FeaturesSection features={config?.features} />
                 <BenefitsSection />
                 <ForSellersSection />
@@ -50,7 +69,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAdminClick }) => {
                 <TestimonialsSection testimonials={config?.testimonials} />
                 <FAQSection faqs={config?.faqs} />
             </main>
-            <Footer onAdminClick={onAdminClick} />
+            <Footer onAdminClick={onAdminClick} config={config?.footer} />
             <LoginComponent isOpen={isLoginModalOpen} onClose={handleCloseLoginModal} />
         </div>
     );

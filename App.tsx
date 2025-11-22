@@ -15,6 +15,7 @@ import NotificationCenter from './components/NotificationCenter';
 import LandingPage from './components/landing/LandingPage';
 import AdminLogin from './components/admin/AdminLogin';
 import AdminDashboard from './components/admin/AdminDashboard';
+import CustomCursor from './components/CustomCursor';
 
 // Define navigation state types
 export interface ChatParams {
@@ -73,23 +74,48 @@ const AppContent: React.FC = () => {
 
     // --- Admin Flow ---
     if (isAdminAuthenticated) {
-        return <AdminDashboard onLogout={() => { setIsAdminAuthenticated(false); setShowAdminLogin(false); }} />;
+        return (
+            <>
+                <CustomCursor />
+                <AdminDashboard onLogout={() => { setIsAdminAuthenticated(false); setShowAdminLogin(false); }} />
+            </>
+        );
     }
     if (showAdminLogin) {
-        return <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} onBack={() => setShowAdminLogin(false)} />;
+        return (
+            <>
+                <CustomCursor />
+                <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} onBack={() => setShowAdminLogin(false)} />
+            </>
+        );
     }
     // -----------------
 
     if (!user) {
-        return <LandingPage onAdminClick={() => setShowAdminLogin(true)} />;
+        return (
+            <>
+                <CustomCursor />
+                <LandingPage onAdminClick={() => setShowAdminLogin(true)} />
+            </>
+        );
     }
     
     if (userProfile && (!userProfile.role || !userProfile.name)) {
-        return <Onboarding />;
+        return (
+            <>
+                <CustomCursor />
+                <Onboarding />
+            </>
+        );
     }
 
     if (activeChatParams) {
-        return <ChatRoom chatParams={activeChatParams} onBack={navigateFromChat} />;
+        return (
+            <>
+                <CustomCursor />
+                <ChatRoom chatParams={activeChatParams} onBack={navigateFromChat} />
+            </>
+        );
     }
     
     const renderDashboard = () => {
@@ -98,30 +124,29 @@ const AppContent: React.FC = () => {
                 <InventoryProvider userId={user.uid}>
                     <InventoryManager 
                         onNavigateToChat={navigateToChat} 
-                        onOpenNotifications={() => setIsNotificationCenterOpen(true)} 
+                        onOpenNotifications={() => setIsNotificationCenterOpen(true)}
                     />
                 </InventoryProvider>
             );
         }
-        if (userProfile?.role === 'supplier') {
-            return <SupplierDashboard 
-                        onNavigateToChat={navigateToChat}
-                        onOpenNotifications={() => setIsNotificationCenterOpen(true)}
-                    />;
-        }
         return (
-            <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
-                <div className="text-2xl text-gray-800 dark:text-gray-200">Loading user profile...</div>
-            </div>
+            <SupplierDashboard 
+                onNavigateToChat={navigateToChat}
+                onOpenNotifications={() => setIsNotificationCenterOpen(true)}
+            />
         );
     };
 
     return (
         <>
+            <CustomCursor />
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
             {renderDashboard()}
             {isNotificationCenterOpen && user && (
-                <NotificationCenter userId={user.uid} onClose={() => setIsNotificationCenterOpen(false)} />
+                <NotificationCenter 
+                    userId={user.uid} 
+                    onClose={() => setIsNotificationCenterOpen(false)} 
+                />
             )}
         </>
     );
@@ -129,11 +154,11 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
     return (
-        <ThemeProvider>
-            <AuthProvider>
+        <AuthProvider>
+            <ThemeProvider>
                 <AppContent />
-            </AuthProvider>
-        </ThemeProvider>
+            </ThemeProvider>
+        </AuthProvider>
     );
 };
 

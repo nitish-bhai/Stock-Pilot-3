@@ -74,7 +74,28 @@ const DEFAULT_CONFIG: SiteConfig = {
             question: "Can I use it for any type of store?",
             answer: "Stock Pilot is optimized for Retail, Grocery, Medical, Textile, and Hardware stores, but can be adapted for many inventory-based businesses."
         }
-    ]
+    ],
+    footer: {
+        socialLinks: {
+            twitter: '#',
+            linkedin: '#',
+            youtube: '#',
+            facebook: '#',
+            instagram: '#'
+        },
+        links: [
+            { label: 'Privacy Policy', url: '#' },
+            { label: 'Terms of Service', url: '#' },
+            { label: 'Support', url: '#' }
+        ]
+    },
+    style: {
+        primaryColor: '#4F46E5', // Indigo-600
+        textColorLight: '#111827', // Gray-900
+        textColorDark: '#F9FAFB', // Gray-50
+        backgroundColorLight: '#F9FAFB', // Gray-50
+        backgroundColorDark: '#111827' // Gray-900
+    }
 };
 
 export const getSiteConfig = async (): Promise<SiteConfig> => {
@@ -82,7 +103,12 @@ export const getSiteConfig = async (): Promise<SiteConfig> => {
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
-        return docSnap.data() as SiteConfig;
+        const data = docSnap.data() as SiteConfig;
+        // Ensure footer structure exists for legacy configs
+        if (!data.footer) {
+            data.footer = DEFAULT_CONFIG.footer;
+        }
+        return { ...DEFAULT_CONFIG, ...data };
     } else {
         // If no config exists, create default
         await setDoc(docRef, DEFAULT_CONFIG);
@@ -96,21 +122,15 @@ export const updateSiteConfig = async (newConfig: SiteConfig): Promise<void> => 
 };
 
 export const getAppStats = async (): Promise<{ sellers: number; suppliers: number }> => {
-    // Note: This is an approximation. Realtime exact counts of large collections 
-    // should use aggregation queries or Cloud Functions for scale.
-    // For this hackathon app, `getCountFromServer` is fine but requires specific indexing/permissions usually.
-    // We will fall back to a safer estimation if needed, but let's try server count.
-    
     try {
         const usersRef = collection(db, 'users');
         const snapshot = await getCountFromServer(usersRef);
         const total = snapshot.data().count;
-        // Rough estimation for split since we can't query multiple wheres efficiently without index
         return {
             sellers: Math.floor(total * 0.7), 
             suppliers: Math.floor(total * 0.3)
         };
     } catch (e) {
-        return { sellers: 120, suppliers: 45 }; // Fallback dummy data
+        return { sellers: 120, suppliers: 45 }; 
     }
 };

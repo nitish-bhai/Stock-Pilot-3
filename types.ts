@@ -113,6 +113,11 @@ export interface FAQ {
     answer: string;
 }
 
+export interface FooterLink {
+    label: string;
+    url: string;
+}
+
 export interface SiteConfig {
     hero: {
         title: string;
@@ -122,4 +127,21 @@ export interface SiteConfig {
     features: SiteFeature[];
     testimonials: Testimonial[];
     faqs: FAQ[];
+    footer: {
+        socialLinks: {
+            twitter?: string;
+            linkedin?: string;
+            youtube?: string;
+            facebook?: string;
+            instagram?: string;
+        };
+        links: FooterLink[];
+    };
+    style?: {
+        primaryColor: string;
+        textColorLight: string;
+        textColorDark: string;
+        backgroundColorLight: string;
+        backgroundColorDark: string;
+    };
 }

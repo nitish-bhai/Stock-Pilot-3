@@ -1,33 +1,55 @@
 
 import React from 'react';
-import { TwitterIcon, LinkedinIcon, GithubIcon, LockClosedIcon } from '../icons';
+import { TwitterIcon, LinkedinIcon, LockClosedIcon, YouTubeIcon, FacebookIcon, InstagramIcon } from '../icons';
+import { SiteConfig } from '../../types';
 
 interface FooterProps {
     onAdminClick?: () => void;
+    config?: SiteConfig['footer'];
 }
 
-const Footer: React.FC<FooterProps> = ({ onAdminClick }) => {
+const Footer: React.FC<FooterProps> = ({ onAdminClick, config }) => {
     return (
         <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
             <div className="container mx-auto px-4 sm:px-6 py-8">
                 <div className="md:flex md:items-center md:justify-between">
                     {/* Social links */}
                     <ul className="flex mb-4 md:order-1 md:ml-4 md:mb-0">
+                        {config?.socialLinks?.twitter && (
                         <li>
-                            <a href="#" className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="Twitter">
+                            <a href={config.socialLinks.twitter} className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="Twitter">
                                 <TwitterIcon className="w-8 h-8 p-2"/>
                             </a>
                         </li>
+                        )}
+                        {config?.socialLinks?.linkedin && (
                         <li className="ml-4">
-                            <a href="#" className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="LinkedIn">
+                            <a href={config.socialLinks.linkedin} className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="LinkedIn">
                                 <LinkedinIcon className="w-8 h-8 p-1"/>
                             </a>
                         </li>
-                         <li className="ml-4">
-                            <a href="#" className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="Github">
-                                <GithubIcon className="w-8 h-8 p-1"/>
+                        )}
+                        {config?.socialLinks?.youtube && (
+                        <li className="ml-4">
+                            <a href={config.socialLinks.youtube} className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="YouTube">
+                                <YouTubeIcon className="w-8 h-8 p-2"/>
                             </a>
                         </li>
+                        )}
+                        {config?.socialLinks?.facebook && (
+                        <li className="ml-4">
+                            <a href={config.socialLinks.facebook} className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="Facebook">
+                                <FacebookIcon className="w-8 h-8 p-2"/>
+                            </a>
+                        </li>
+                        )}
+                        {config?.socialLinks?.instagram && (
+                        <li className="ml-4">
+                            <a href={config.socialLinks.instagram} className="flex justify-center items-center text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-white-100 dark:hover:bg-gray-700 rounded-full shadow transition duration-150 ease-in-out" aria-label="Instagram">
+                                <InstagramIcon className="w-8 h-8 p-2"/>
+                            </a>
+                        </li>
+                        )}
                     </ul>
 
                     {/* Copyright */}
@@ -36,8 +58,10 @@ const Footer: React.FC<FooterProps> = ({ onAdminClick }) => {
                     </div>
                 </div>
                  <div className="flex flex-col md:flex-row justify-between items-center mt-4 text-sm text-gray-500 dark:text-gray-400">
-                    <div>
-                        <a href="#" className="hover:underline">Privacy Policy</a> &middot; <a href="#" className="hover:underline">Terms of Service</a>
+                    <div className="flex gap-4">
+                        {config?.links?.map((link, idx) => (
+                            <a key={idx} href={link.url} className="hover:underline">{link.label}</a>
+                        ))}
                     </div>
                     <button 
                         onClick={onAdminClick} 

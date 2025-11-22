@@ -1,40 +1,52 @@
+
 import React from 'react';
 
 const benefits = [
     {
-        title: 'Reduce Product Waste',
-        description: 'With automatic expiry detection and timely alerts, you can sell or use stock before it goes to waste, saving you money.'
+        title: 'Stop Losing Money on Expired Stock',
+        description: 'Every year, shopkeepers lose lakhs to expired items. Our smart alert system notifies you weeks in advance, so you can run a sale and recover costs before it is too late.',
+        image: 'https://images.unsplash.com/photo-1534723452862-4c874018d66d?auto=format&fit=crop&q=80&w=1000',
     },
     {
-        title: 'Save Time on Sourcing',
-        description: 'Our smart matching system connects you directly with relevant partners, so you spend less time searching and more time doing business.'
+        title: 'Connect Instantly with Suppliers',
+        description: 'Stop calling 10 different people. Our AI matches you with the right suppliers instantly based on your category. Chat, negotiate, and order in real-time within the app.',
+        image: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&q=80&w=1000',
     },
     {
-        title: 'Streamline Communication',
-        description: 'No more switching between apps. All your business conversations happen in one place with our integrated real-time chat.'
-    },
-    {
-        title: 'Manage Stock Effortlessly',
-        description: 'Whether you use your voice or our modern dashboard, tracking your items, quantities, and values has never been easier.'
+        title: 'Your Voice is the Controller',
+        description: 'Busy hands? Just say "Add 50 packets of Maggi". Our AI understands Hindi, English, and Hinglish accents perfectly, making inventory management hands-free.',
+        image: 'https://images.unsplash.com/photo-1589758438368-0ad531db3366?auto=format&fit=crop&q=80&w=1000',
     },
 ];
 
 const BenefitsSection: React.FC = () => {
     return (
-        <section id="benefits" className="py-12 md:py-20">
+        <section id="benefits" className="py-24 bg-white dark:bg-gray-900 overflow-hidden">
             <div className="container mx-auto px-4 sm:px-6">
-                <div className="max-w-3xl mx-auto text-center pb-12 md:pb-16" data-aos="fade-up">
-                    <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">The Ultimate Advantage for Your Business</h2>
-                    <p className="text-lg text-gray-600 dark:text-gray-300 mt-4">
-                        Stock Pilot isn't just an inventory tool; it's a platform designed to make your business more efficient and profitable.
-                    </p>
+                <div className="text-center max-w-3xl mx-auto mb-24" data-aos="fade-up">
+                    <h2 className="text-4xl md:text-5xl font-extrabold mb-6">
+                        Why <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-teal-500">Stock Pilot?</span>
+                    </h2>
+                    <p className="text-xl text-gray-600 dark:text-gray-300 mt-6">Real problems, solved by real intelligence.</p>
                 </div>
 
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="space-y-32">
                     {benefits.map((benefit, index) => (
-                        <div key={index} className="flex flex-col p-6 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg" data-aos="fade-up" data-aos-delay={100 * index}>
-                            <h4 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">{benefit.title}</h4>
-                            <p className="text-gray-600 dark:text-gray-300 flex-grow">{benefit.description}</p>
+                        <div key={index} className={`flex flex-col ${index % 2 === 1 ? 'lg:flex-row-reverse' : 'lg:flex-row'} items-center gap-12 lg:gap-24`}>
+                            <div className="lg:w-1/2 w-full" data-aos={index % 2 === 1 ? "fade-left" : "fade-right"} data-aos-duration="1000">
+                                <div className="relative rounded-3xl overflow-hidden shadow-2xl group aspect-video">
+                                    <div className="absolute inset-0 bg-indigo-900/20 group-hover:bg-transparent transition-colors duration-500 z-10"></div>
+                                    <img 
+                                        src={benefit.image} 
+                                        alt={benefit.title} 
+                                        className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-1000"
+                                    />
+                                </div>
+                            </div>
+                            <div className="lg:w-1/2 w-full" data-aos="fade-up" data-aos-delay="200">
+                                <h3 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6 leading-tight">{benefit.title}</h3>
+                                <p className="text-lg text-gray-600 dark:text-gray-300 leading-relaxed">{benefit.description}</p>
+                            </div>
                         </div>
                     ))}
                 </div>

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { SiteConfig } from '../../types';
 
 interface HeroSectionProps {
@@ -12,37 +12,63 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStartedClick, config }) 
     const subtitle = config?.subtitle || 'Stock Pilot is the all-in-one platform that connects sellers with suppliers and automates inventory management with voice commands, expiry alerts, and real-time chat.';
     const bgImage = config?.imageUrl || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1470&q=80';
 
+    const [offset, setOffset] = useState(0);
+
+    useEffect(() => {
+        const handleScroll = () => setOffset(window.scrollY);
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
     return (
-        <section id="hero" className="relative pt-32 pb-20 md:pt-40 md:pb-28 overflow-hidden">
-            {/* Background Image with Overlay */}
-            <div className="absolute inset-0 z-0">
+        <section id="hero" className="relative h-screen min-h-[600px] flex items-center overflow-hidden">
+            {/* Parallax Background */}
+            <div 
+                className="absolute inset-0 z-0"
+                style={{ transform: `translateY(${offset * 0.5}px)` }}
+            >
                 <img 
                     src={bgImage} 
                     alt="Warehouse Background" 
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover scale-110 filter brightness-50 contrast-125" 
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-white/80 to-white dark:from-gray-900/90 dark:via-gray-900/80 dark:to-gray-900"></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-gray-900/80 via-gray-900/70 to-gray-900"></div>
             </div>
 
-            <div className="container mx-auto px-4 sm:px-6 relative z-10">
-                <div className="text-center">
-                    <h1 className="text-4xl md:text-6xl font-extrabold leading-tighter tracking-tighter mb-4 text-gray-900 dark:text-white whitespace-pre-line" data-aos="zoom-y-out">
+            <div className="container mx-auto px-4 sm:px-6 relative z-10 pt-20">
+                <div className="text-center max-w-5xl mx-auto">
+                    <h1 
+                        className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 drop-shadow-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-300 via-blue-500 to-purple-600 animate-fade-in-down" 
+                        data-aos="zoom-y-out" 
+                        data-aos-duration="1200"
+                    >
                         {title}
                     </h1>
                     <div className="max-w-3xl mx-auto">
-                        <p className="text-lg md:text-xl text-gray-700 dark:text-gray-200 mb-8 font-medium" data-aos="zoom-y-out" data-aos-delay="150">
+                        <p className="text-xl md:text-2xl text-gray-300 mb-10 font-light leading-relaxed" data-aos="fade-up" data-aos-delay="300">
                             {subtitle}
                         </p>
-                        <div className="max-w-xs mx-auto sm:max-w-none sm:flex sm:justify-center" data-aos="zoom-y-out" data-aos-delay="300">
+                        <div className="flex flex-col sm:flex-row gap-5 justify-center" data-aos="fade-up" data-aos-delay="600">
                             <button
                                 onClick={onGetStartedClick}
-                                className="w-full sm:w-auto px-8 py-3 text-white bg-indigo-600 rounded-full hover:bg-indigo-700 shadow-lg transition duration-150 ease-in-out font-bold text-lg transform hover:scale-105"
+                                className="px-10 py-4 text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full shadow-lg hover:shadow-indigo-500/50 transition-all duration-300 ease-out font-bold text-lg transform hover:-translate-y-1 hover:scale-105 ring-2 ring-offset-2 ring-offset-transparent ring-indigo-500"
                             >
-                                Get Started
+                                Get Started Free
+                            </button>
+                            <button
+                                onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
+                                className="px-10 py-4 text-white border border-gray-500 bg-gray-800/40 backdrop-blur-md rounded-full hover:bg-gray-700/60 transition-all duration-300 ease-out font-bold text-lg hover:border-white"
+                            >
+                                Learn More
                             </button>
                         </div>
                     </div>
                 </div>
+            </div>
+            
+            {/* Scroll Indicator */}
+            <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 animate-bounce text-cyan-400/70">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
             </div>
         </section>
     );
