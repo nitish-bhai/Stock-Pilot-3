@@ -93,6 +93,28 @@ export interface Notification {
     };
 }
 
+// --- Shelf Doctor Types ---
+
+export interface VisualAnnotation {
+    label: string;
+    type: 'ghost_spot' | 'misplaced' | 'good';
+    frameIndex: number;
+    box2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000 scale
+    suggestion: string;
+}
+
+export interface ShelfAnalysis {
+    id: string;
+    userId: string;
+    createdAt: Timestamp;
+    score: number;
+    summary: string;
+    powerMove: string;
+    visualIssues: VisualAnnotation[];
+    capturedFrame: string; // Single representative frame (Base64)
+    improvedFrame?: string; // AI Hallucinated frame (Base64)
+}
+
 // --- Site Configuration Types for Admin Panel ---
 
 export interface SiteFeature {

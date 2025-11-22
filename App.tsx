@@ -15,6 +15,8 @@ import NotificationCenter from './components/NotificationCenter';
 import LandingPage from './components/landing/LandingPage';
 import AdminLogin from './components/admin/AdminLogin';
 import AdminDashboard from './components/admin/AdminDashboard';
+import ShelfAnalysisPage from './components/ShelfAnalysisPage';
+import CustomCursor from './components/CustomCursor';
 
 // Define navigation state types
 export interface ChatParams {
@@ -29,6 +31,9 @@ const AppContent: React.FC = () => {
     const lastMessageTimestampRef = React.useRef<any>(null);
     const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
     
+    // New Route State
+    const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
+
     // Admin States
     const [showAdminLogin, setShowAdminLogin] = useState(false);
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -74,12 +79,18 @@ const AppContent: React.FC = () => {
     // --- Admin Flow ---
     if (isAdminAuthenticated) {
         return (
-            <AdminDashboard onLogout={() => { setIsAdminAuthenticated(false); setShowAdminLogin(false); }} />
+            <>
+                <AdminDashboard onLogout={() => { setIsAdminAuthenticated(false); setShowAdminLogin(false); }} />
+                <CustomCursor />
+            </>
         );
     }
     if (showAdminLogin) {
         return (
-            <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} onBack={() => setShowAdminLogin(false)} />
+            <>
+                <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} onBack={() => setShowAdminLogin(false)} />
+                <CustomCursor />
+            </>
         );
     }
     // -----------------
@@ -96,6 +107,17 @@ const AppContent: React.FC = () => {
         );
     }
 
+    // --- Authenticated Routes ---
+
+    if (activeAnalysisId) {
+        return (
+            <ShelfAnalysisPage 
+                analysisId={activeAnalysisId} 
+                onBack={() => setActiveAnalysisId(null)} 
+            />
+        );
+    }
+
     if (activeChatParams) {
         return (
             <ChatRoom chatParams={activeChatParams} onBack={navigateFromChat} />
@@ -109,6 +131,7 @@ const AppContent: React.FC = () => {
                     <InventoryManager 
                         onNavigateToChat={navigateToChat} 
                         onOpenNotifications={() => setIsNotificationCenterOpen(true)}
+                        onViewAnalysis={(id) => setActiveAnalysisId(id)}
                     />
                 </InventoryProvider>
             );

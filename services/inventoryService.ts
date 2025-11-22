@@ -1,7 +1,7 @@
 
 import { db } from './firebase';
-import { collection, query, onSnapshot, Unsubscribe, addDoc, doc, updateDoc, deleteDoc, where, getDocs, runTransaction, writeBatch, DocumentReference, Timestamp } from 'firebase/firestore';
-import { InventoryItem } from '../types';
+import { collection, query, onSnapshot, Unsubscribe, addDoc, doc, updateDoc, deleteDoc, where, getDocs, runTransaction, writeBatch, DocumentReference, Timestamp, orderBy, getDoc } from 'firebase/firestore';
+import { InventoryItem, ShelfAnalysis } from '../types';
 import { deleteNotificationsForItem } from './notificationService';
 
 export const getInventoryStream = (userId: string, callback: (items: InventoryItem[]) => void): Unsubscribe => {
@@ -155,6 +155,32 @@ export const deleteItemsBatch = async (userId: string, itemIds: string[]): Promi
     await batch.commit();
     
     // Cleanup notifications for these items separately
-    // Note: We do this async/parallel to not block the UI
     itemIds.forEach(id => deleteNotificationsForItem(userId, id));
+};
+
+// --- Shelf Analysis Storage ---
+
+export const saveShelfAnalysis = async (analysis: Omit<ShelfAnalysis, 'id'>): Promise<string> => {
+    const collectionRef = collection(db, `users/${analysis.userId}/shelf_analyses`);
+    const docRef = await addDoc(collectionRef, analysis);
+    return docRef.id;
+};
+
+export const getShelfAnalyses = async (userId: string): Promise<ShelfAnalysis[]> => {
+    const collectionRef = collection(db, `users/${userId}/shelf_analyses`);
+    const q = query(collectionRef, orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    } as ShelfAnalysis));
+};
+
+export const getShelfAnalysisById = async (userId: string, analysisId: string): Promise<ShelfAnalysis | null> => {
+    const docRef = doc(db, `users/${userId}/shelf_analyses`, analysisId);
+    const snapshot = await getDoc(docRef);
+    if (snapshot.exists()) {
+        return { id: snapshot.id, ...snapshot.data() } as ShelfAnalysis;
+    }
+    return null;
 };
