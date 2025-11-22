@@ -8,6 +8,7 @@ import InventoryTable from './InventoryTable';
 import MicButton from './MicButton';
 import CameraCapture from './CameraCapture';
 import EditItemModal from './EditItemModal';
+import AddItemModal from './AddItemModal';
 import BusinessPilot from './BusinessPilot';
 import SubscriptionModal from './SubscriptionModal';
 import { encode, decode, decodeAudioData } from '../utils/audioUtils';
@@ -16,7 +17,7 @@ import { addOrUpdateItem, removeItem, updateInventoryItem, deleteItemsBatch } fr
 import { getChatsStream } from '../services/chatService';
 import { getNotificationsStream } from '../services/notificationService';
 import { incrementUserUsage } from '../services/firebase';
-import { LogoutIcon, SearchIcon, ChatIcon, BellIcon, CameraIcon, XMarkIcon, DocumentTextIcon, SparklesIcon, ShareIcon, PresentationChartLineIcon } from './icons';
+import { LogoutIcon, SearchIcon, ChatIcon, BellIcon, CameraIcon, XMarkIcon, DocumentTextIcon, SparklesIcon, ShareIcon, PresentationChartLineIcon, PlusIcon } from './icons';
 import { InventoryItem, Chat, UserProfile, Notification } from '../types';
 import { ChatParams } from '../App';
 import ChatListModal from './ChatListModal';
@@ -65,6 +66,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ onNavigateToChat, o
     const [reviewItems, setReviewItems] = useState<DetectedItem[]>([]);
     const [isReviewingInvoice, setIsReviewingInvoice] = useState(false); 
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+    const [showAddItemModal, setShowAddItemModal] = useState(false);
 
     // State for Shelf Doctor Report
     const [shelfReport, setShelfReport] = useState<ShelfAnalysisReport | null>(null);
@@ -707,6 +709,24 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
         }
     };
 
+    const handleManualAddItem = async (itemData: { name: string; quantity: number; price: number; expiryDate?: string }) => {
+        if (!user) return;
+        // Check Inventory Limit
+        if (!checkUsageLimit('inventoryCount', inventoryRef.current.length)) {
+            setToastMessage("Inventory limit reached.");
+            return;
+        }
+        
+        try {
+            await addOrUpdateItem(user.uid, itemData.name, itemData.quantity, itemData.price, itemData.expiryDate);
+            setShowAddItemModal(false);
+            setToastMessage(`Added ${itemData.name} successfully.`);
+        } catch (e) {
+            console.error("Manual Add Failed", e);
+            setToastMessage("Failed to add item.");
+        }
+    };
+
     // Batch Actions Logic
     const handleBulkDelete = async () => {
         if (!user || selectedItemIds.size === 0) return;
@@ -877,15 +897,25 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
             </section>
 
             {/* Search and Filter */}
-            <div className="flex items-center mb-6 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 max-w-md">
-                <SearchIcon className="w-5 h-5 text-gray-400 ml-2" />
-                <input
-                    type="text"
-                    placeholder="Search inventory..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white ml-2 placeholder-gray-400"
-                />
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <div className="flex items-center bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 w-full md:max-w-md">
+                    <SearchIcon className="w-5 h-5 text-gray-400 ml-2" />
+                    <input
+                        type="text"
+                        placeholder="Search inventory..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white ml-2 placeholder-gray-400"
+                    />
+                </div>
+                
+                <button 
+                    onClick={() => setShowAddItemModal(true)}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium shadow-sm whitespace-nowrap w-full md:w-auto justify-center"
+                >
+                    <PlusIcon className="w-5 h-5" />
+                    Add Item Manually
+                </button>
             </div>
 
             <InventoryTable 
@@ -1102,6 +1132,14 @@ Keep responses brief and conversational. Current inventory is: ${JSON.stringify(
                     item={editingItem} 
                     onClose={() => setEditingItem(null)} 
                     onSave={handleUpdateItem}
+                />
+            )}
+
+            {/* Add Item Manual Modal */}
+            {showAddItemModal && (
+                <AddItemModal
+                    onClose={() => setShowAddItemModal(false)}
+                    onAdd={handleManualAddItem}
                 />
             )}
 

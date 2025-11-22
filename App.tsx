@@ -15,7 +15,6 @@ import NotificationCenter from './components/NotificationCenter';
 import LandingPage from './components/landing/LandingPage';
 import AdminLogin from './components/admin/AdminLogin';
 import AdminDashboard from './components/admin/AdminDashboard';
-import CustomCursor from './components/CustomCursor';
 
 // Define navigation state types
 export interface ChatParams {
@@ -75,46 +74,31 @@ const AppContent: React.FC = () => {
     // --- Admin Flow ---
     if (isAdminAuthenticated) {
         return (
-            <>
-                <CustomCursor />
-                <AdminDashboard onLogout={() => { setIsAdminAuthenticated(false); setShowAdminLogin(false); }} />
-            </>
+            <AdminDashboard onLogout={() => { setIsAdminAuthenticated(false); setShowAdminLogin(false); }} />
         );
     }
     if (showAdminLogin) {
         return (
-            <>
-                <CustomCursor />
-                <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} onBack={() => setShowAdminLogin(false)} />
-            </>
+            <AdminLogin onLogin={() => setIsAdminAuthenticated(true)} onBack={() => setShowAdminLogin(false)} />
         );
     }
     // -----------------
 
     if (!user) {
         return (
-            <>
-                <CustomCursor />
-                <LandingPage onAdminClick={() => setShowAdminLogin(true)} />
-            </>
+            <LandingPage onAdminClick={() => setShowAdminLogin(true)} />
         );
     }
     
     if (userProfile && (!userProfile.role || !userProfile.name)) {
         return (
-            <>
-                <CustomCursor />
-                <Onboarding />
-            </>
+            <Onboarding />
         );
     }
 
     if (activeChatParams) {
         return (
-            <>
-                <CustomCursor />
-                <ChatRoom chatParams={activeChatParams} onBack={navigateFromChat} />
-            </>
+            <ChatRoom chatParams={activeChatParams} onBack={navigateFromChat} />
         );
     }
     
@@ -139,7 +123,6 @@ const AppContent: React.FC = () => {
 
     return (
         <>
-            <CustomCursor />
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
             {renderDashboard()}
             {isNotificationCenterOpen && user && (

@@ -14,6 +14,7 @@ import Footer from './Footer';
 import LoginComponent from '../Login';
 import AOS from 'aos';
 import { useSiteContent } from '../../hooks/useSiteContent';
+import CustomCursor from '../CustomCursor';
 
 interface LandingPageProps {
     onAdminClick?: () => void;
@@ -45,10 +46,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAdminClick }) => {
 
     return (
         <div 
-            className="bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-300"
+            className="bg-gray-50 dark:bg-gray-900 overflow-hidden transition-colors duration-300 cursor-none" // Added cursor-none class
             style={customStyle}
         >
+            {/* Inline style to ensure cursor is hidden on all child elements within landing page */}
             <style>{`
+                .cursor-none, .cursor-none * {
+                    cursor: none !important;
+                }
                 :root {
                     --text-light-default: #111827;
                     --text-dark-default: #F9FAFB;
@@ -57,6 +62,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAdminClick }) => {
                 .text-gray-900 { color: var(--text-light, var(--text-light-default)); }
                 .dark .text-white { color: var(--text-dark, var(--text-dark-default)); }
             `}</style>
+            
+            <CustomCursor /> {/* Custom Cursor rendered only here */}
+            
             <Header onLoginClick={handleOpenLoginModal} />
             <main>
                 <HeroSection onGetStartedClick={handleOpenLoginModal} config={config?.hero} />
